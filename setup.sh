@@ -382,13 +382,25 @@ info "Build scheme generated"
 # --------------------------------------------------
 step "Building Popy (Release)..."
 
-xcodebuild \
-    -project Popy.xcodeproj \
-    -scheme Popy \
-    -configuration Release \
-    -derivedDataPath build \
-    CODE_SIGN_IDENTITY="-" \
-    build 2>&1 | grep -E "(BUILD|error:|warning:|Compiling|Linking|✗)" || true
+if [ -n "${CI:-}" ]; then
+    # In CI, show full output for debugging
+    xcodebuild \
+        -project Popy.xcodeproj \
+        -scheme Popy \
+        -configuration Release \
+        -derivedDataPath build \
+        CODE_SIGN_IDENTITY="-" \
+        build
+else
+    # Locally, filter to relevant lines
+    xcodebuild \
+        -project Popy.xcodeproj \
+        -scheme Popy \
+        -configuration Release \
+        -derivedDataPath build \
+        CODE_SIGN_IDENTITY="-" \
+        build 2>&1 | grep -E "(BUILD|error:|warning:|Compiling|Linking|✗)" || true
+fi
 
 BUILD_APP="build/Build/Products/Release/Popy.app"
 if [ ! -d "$BUILD_APP" ]; then

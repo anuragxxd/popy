@@ -116,30 +116,33 @@ MOUNT_DIR=$(hdiutil attach "$DMG_TEMP" -readwrite -noverify -noautoopen 2>&1 | g
 if [ -n "$MOUNT_DIR" ] && [ -d "$MOUNT_DIR" ]; then
     info "Mounted at: $MOUNT_DIR"
 
-    # Use AppleScript to set Finder window appearance
-    osascript << APPLESCRIPT
-    tell application "Finder"
-        tell disk "Popy"
-            open
-            set current view of container window to icon view
-            set toolbar visible of container window to false
-            set statusbar visible of container window to false
-            set bounds of container window to {100, 100, 640, 400}
-            set viewOptions to the icon view options of container window
-            set arrangement of viewOptions to not arranged
-            set icon size of viewOptions to 80
-            set position of item "Popy.app" of container window to {140, 140}
-            set position of item "Applications" of container window to {400, 140}
-            set position of item "README.txt" of container window to {270, 260}
-            close
-            open
-            update without registering applications
-            delay 2
-            close
+    # Apply Finder window layout (skipped in CI — requires GUI session)
+    if [ -z "${CI:-}" ] && [ -z "${GITHUB_ACTIONS:-}" ]; then
+        osascript << APPLESCRIPT 2>/dev/null && info "Applied Finder layout" || warn "Finder layout skipped (no GUI)"
+        tell application "Finder"
+            tell disk "Popy"
+                open
+                set current view of container window to icon view
+                set toolbar visible of container window to false
+                set statusbar visible of container window to false
+                set bounds of container window to {100, 100, 640, 400}
+                set viewOptions to the icon view options of container window
+                set arrangement of viewOptions to not arranged
+                set icon size of viewOptions to 80
+                set position of item "Popy.app" of container window to {140, 140}
+                set position of item "Applications" of container window to {400, 140}
+                set position of item "README.txt" of container window to {270, 260}
+                close
+                open
+                update without registering applications
+                delay 2
+                close
+            end tell
         end tell
-    end tell
 APPLESCRIPT
-    info "Applied Finder layout"
+    else
+        info "CI detected — skipping Finder layout (DMG still works fine)"
+    fi
 
     # Unmount
     hdiutil detach "$MOUNT_DIR" -quiet -force 2>/dev/null || true

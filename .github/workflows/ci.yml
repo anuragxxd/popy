@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    name: Build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Generate Xcode project
+        run: |
+          # Extract just the project generation part from setup.sh
+          # (setup.sh generates the xcodeproj inline — no external tools)
+          bash setup.sh 2>&1 | head -50
+        # setup.sh generates + builds in one shot, so we get both
+
+      - name: Verify build output
+        run: |
+          APP_PATH=$(find build -name "Popy.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: Popy.app not found in build output"
+            exit 1
+          fi
+          echo "Build verified: $APP_PATH"
+          echo "Contents:"
+          ls -la "$APP_PATH/Contents/"
+          echo "Binary:"
+          file "$APP_PATH/Contents/MacOS/Popy"

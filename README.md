@@ -113,6 +113,26 @@ popy/
 - **Persistence**: The history array is JSON-encoded via `Codable` and stored in `UserDefaults`.
 - **Menu bar**: Uses `NSStatusBar` + `NSMenu` (AppKit), which works on all macOS versions. No SwiftUI `MenuBarExtra` dependency.
 
+## CI / CD
+
+The project includes two GitHub Actions workflows:
+
+### `ci.yml` — Build on every push / PR
+Runs on `macos-latest`. Generates the Xcode project, builds the app, and verifies the output. Triggered on pushes and PRs to `master`/`main`.
+
+### `release.yml` — Publish a release with DMG
+Triggered when you push a version tag. Builds the app, packages it into a DMG, and creates a GitHub Release with the DMG and SHA-256 checksum attached.
+
+To cut a release:
+
+```bash
+# Update version in Popy/Resources/Info.plist if needed, then:
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The release will appear at `https://github.com/<owner>/popy/releases` with the DMG ready to download.
+
 ## License
 
 MIT

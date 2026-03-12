@@ -1,0 +1,102 @@
+name: Release
+
+# Trigger: push a version tag like v1.0.0, v1.2.3, etc.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish DMG
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      # ── Build ────────────────────────────────────────────
+      - name: Build Popy.app
+        run: bash setup.sh
+
+      - name: Verify build
+        run: |
+          APP_PATH=$(find build -name "Popy.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: Popy.app not found"
+            exit 1
+          fi
+          echo "app_path=$APP_PATH" >> "$GITHUB_ENV"
+          echo "Build OK: $APP_PATH"
+
+      # ── Package DMG ──────────────────────────────────────
+      - name: Package DMG
+        run: bash package.sh
+
+      - name: Prepare release assets
+        id: assets
+        run: |
+          # Extract version from tag (v1.0.0 -> 1.0.0)
+          VERSION="${GITHUB_REF_NAME#v}"
+          DMG_FILE="Popy-${VERSION}.dmg"
+          SHA_FILE="Popy-${VERSION}.dmg.sha256"
+
+          if [ ! -f "$DMG_FILE" ]; then
+            echo "ERROR: $DMG_FILE not found"
+            ls -la *.dmg 2>/dev/null || echo "No DMG files found"
+            exit 1
+          fi
+
+          DMG_SIZE=$(du -h "$DMG_FILE" | awk '{print $1}')
+          SHA256=$(cat "$SHA_FILE" | awk '{print $1}')
+
+          echo "dmg_file=$DMG_FILE" >> "$GITHUB_OUTPUT"
+          echo "sha_file=$SHA_FILE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dmg_size=$DMG_SIZE" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+          echo "DMG: $DMG_FILE ($DMG_SIZE)"
+          echo "SHA: $SHA256"
+
+      # ── Create GitHub Release ────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Popy v${{ steps.assets.outputs.version }}
+          body: |
+            ## Popy v${{ steps.assets.outputs.version }}
+
+            A lightweight macOS menu bar clipboard history manager.
+
+            ### Installation
+            1. Download **${{ steps.assets.outputs.dmg_file }}** below
+            2. Open the DMG
+            3. Drag **Popy.app** into **Applications**
+            4. Launch Popy — it appears in your menu bar
+
+            ### Requirements
+            - macOS 12.0 (Monterey) or later
+
+            ### Checksums
+            | File | SHA-256 |
+            |---|---|
+            | ${{ steps.assets.outputs.dmg_file }} | `${{ steps.assets.outputs.sha256 }}` |
+
+            ---
+            **Size:** ${{ steps.assets.outputs.dmg_size }}
+          files: |
+            ${{ steps.assets.outputs.dmg_file }}
+            ${{ steps.assets.outputs.sha_file }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
