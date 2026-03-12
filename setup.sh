@@ -61,6 +61,7 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 		A1000006 /* KeyboardSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000008 /* KeyboardSimulator.swift */; };
 		A1000007 /* PreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000009 /* PreferencesManager.swift */; };
 		A1000008 /* UpdateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000011 /* UpdateManager.swift */; };
+		A1000009 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000012 /* KeychainStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +76,7 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 		B1000009 /* PreferencesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesManager.swift; sourceTree = "<group>"; };
 		B1000010 /* Popy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Popy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1000011 /* UpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateManager.swift; sourceTree = "<group>"; };
+		B1000012 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -124,6 +126,7 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 				B1000008 /* KeyboardSimulator.swift */,
 				B1000009 /* PreferencesManager.swift */,
 				B1000011 /* UpdateManager.swift */,
+				B1000012 /* KeychainStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -204,6 +207,7 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 				A1000006 /* KeyboardSimulator.swift in Sources */,
 				A1000007 /* PreferencesManager.swift in Sources */,
 				A1000008 /* UpdateManager.swift in Sources */,
+				A1000009 /* KeychainStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

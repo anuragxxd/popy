@@ -1,13 +1,14 @@
 import AppKit
 
-/// Monitors the system clipboard for changes, persists history, and provides re-copy.
+/// Monitors the system clipboard for changes, persists history via Keychain,
+/// and provides re-copy. History is stored in the macOS Keychain (encrypted at
+/// rest, app-scoped) rather than plaintext UserDefaults.
 final class ClipboardManager {
 
     // MARK: - Constants
 
     static let shared = ClipboardManager()
     private let maxItems = 25
-    private let userDefaultsKey = "clipboardHistory"
     private let pollInterval: TimeInterval = 0.5
 
     // MARK: - State
@@ -23,7 +24,9 @@ final class ClipboardManager {
 
     private init() {
         lastChangeCount = NSPasteboard.general.changeCount
-        loadItems()
+        // Migrate any old UserDefaults history into Keychain on first run
+        KeychainStore.shared.migrateFromUserDefaultsIfNeeded()
+        items = KeychainStore.shared.load()
     }
 
     // MARK: - Polling
@@ -34,7 +37,7 @@ final class ClipboardManager {
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
             self?.checkForChanges()
         }
-        // Make sure the timer fires even when menus are open
+        // Ensure timer fires even while a menu is open
         if let timer = timer {
             RunLoop.current.add(timer, forMode: .common)
         }
@@ -63,18 +66,17 @@ final class ClipboardManager {
             return
         }
 
-        // Remove any older duplicate of the same text (move it to top instead)
+        // Remove any older duplicate (move to top rather than creating a second entry)
         items.removeAll { $0.text == copiedString }
 
-        let newItem = ClipboardItem(text: copiedString)
-        items.insert(newItem, at: 0)
+        items.insert(ClipboardItem(text: copiedString), at: 0)
 
         // Cap at max items
         if items.count > maxItems {
             items = Array(items.prefix(maxItems))
         }
 
-        saveItems()
+        KeychainStore.shared.save(items)
         onUpdate?()
     }
 
@@ -85,37 +87,16 @@ final class ClipboardManager {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(item.text, forType: .string)
-        // Update changeCount so we don't re-detect our own paste
+        // Sync changeCount so we don't re-detect our own paste as a new entry
         lastChangeCount = pasteboard.changeCount
     }
 
     // MARK: - Clear
 
-    /// Clear all clipboard history.
+    /// Clear all clipboard history from memory and Keychain.
     func clearAll() {
         items.removeAll()
-        saveItems()
+        KeychainStore.shared.deleteAll()
         onUpdate?()
-    }
-
-    // MARK: - Persistence
-
-    private func saveItems() {
-        do {
-            let data = try JSONEncoder().encode(items)
-            UserDefaults.standard.set(data, forKey: userDefaultsKey)
-        } catch {
-            print("Popy: Failed to save clipboard history: \(error)")
-        }
-    }
-
-    private func loadItems() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else { return }
-        do {
-            items = try JSONDecoder().decode([ClipboardItem].self, from: data)
-        } catch {
-            print("Popy: Failed to load clipboard history: \(error)")
-            items = []
-        }
     }
 }
