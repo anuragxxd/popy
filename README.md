@@ -22,6 +22,10 @@ Or **[download the DMG manually](https://github.com/anuragxxd/popy/releases/late
 - Survives restarts — your history is saved
 - No dock icon, no windows, no clutter
 
+## Security
+
+Clipboard history is stored in the macOS Keychain (encrypted at rest, app-scoped). No plaintext history is written to UserDefaults.
+
 ## Settings
 
 All toggleable from the menu:
