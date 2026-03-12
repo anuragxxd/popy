@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let loginItemManager = LoginItemManager.shared
     private let preferences = PreferencesManager.shared
     private let updateManager = UpdateManager.shared
+    private let flowIntegration = FlowIntegration.shared
 
     // MARK: - App Lifecycle
 
@@ -20,10 +21,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.buildMenu()
         }
         clipboardManager.startMonitoring()
+
+        // Start Wispr Flow integration if available and enabled
+        setupFlowIntegration()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         clipboardManager.stopMonitoring()
+        flowIntegration.stopMonitoring()
+    }
+
+    // MARK: - Wispr Flow Integration
+
+    private func setupFlowIntegration() {
+        guard preferences.flowIntegrationEnabled, flowIntegration.isAvailable else {
+            return
+        }
+
+        flowIntegration.onNewTranscription = { [weak self] item in
+            self?.clipboardManager.insertExternalItem(item)
+        }
+        flowIntegration.startMonitoring()
     }
 
     // MARK: - Status Bar Setup
@@ -65,6 +83,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 menuItem.target = self
 
                 let fullString = NSMutableAttributedString()
+
+                // Source indicator for Wispr Flow items — SF Symbol microphone icon
+                if item.source == .wisprflow {
+                    if let micImage = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Wispr Flow") {
+                        micImage.isTemplate = true
+                        let attachment = NSTextAttachment()
+                        let symbolSize: CGFloat = 10
+                        attachment.image = micImage
+                        attachment.bounds = CGRect(x: 0, y: -1, width: symbolSize, height: symbolSize)
+                        let iconStr = NSMutableAttributedString(attachment: attachment)
+                        iconStr.append(NSAttributedString(string: " "))
+                        fullString.append(iconStr)
+                    } else {
+                        // Fallback for systems without SF Symbols
+                        fullString.append(NSAttributedString(
+                            string: "[Flow] ",
+                            attributes: [
+                                .font: NSFont.systemFont(ofSize: 9),
+                                .foregroundColor: NSColor.secondaryLabelColor
+                            ]
+                        ))
+                    }
+                }
 
                 let textPart = NSAttributedString(
                     string: item.truncatedText(),
@@ -126,6 +167,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         loginItem.target = self
         loginItem.state = loginItemManager.isEnabled ? .on : .off
         menu.addItem(loginItem)
+
+        // Toggle 4: Wispr Flow integration (only show if Flow is installed)
+        if flowIntegration.isAvailable {
+            let flowItem = NSMenuItem(title: "Wispr Flow Integration", action: #selector(toggleFlowIntegration(_:)), keyEquivalent: "")
+            flowItem.target = self
+            flowItem.state = preferences.flowIntegrationEnabled ? .on : .off
+            menu.addItem(flowItem)
+        }
 
         // ── Updates & Quit ────────────────────────────────────
         menu.addItem(NSMenuItem.separator())
@@ -206,6 +255,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
         let newState = !loginItemManager.isEnabled
         loginItemManager.setEnabled(newState)
+        buildMenu()
+    }
+
+    @objc private func toggleFlowIntegration(_ sender: NSMenuItem) {
+        preferences.flowIntegrationEnabled.toggle()
+        if preferences.flowIntegrationEnabled {
+            setupFlowIntegration()
+        } else {
+            flowIntegration.stopMonitoring()
+        }
         buildMenu()
     }
 

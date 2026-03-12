@@ -80,6 +80,35 @@ final class ClipboardManager {
         onUpdate?()
     }
 
+    // MARK: - External Item Insertion (used by FlowIntegration)
+
+    /// Insert a clipboard item from an external source (e.g. Wispr Flow).
+    /// Handles deduplication against existing entries.
+    func insertExternalItem(_ item: ClipboardItem) {
+        // Skip empty text
+        guard !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        // Deduplicate: skip if it matches the most recent item
+        if let mostRecent = items.first, mostRecent.text == item.text {
+            return
+        }
+
+        // Remove any older duplicate
+        items.removeAll { $0.text == item.text }
+
+        items.insert(item, at: 0)
+
+        // Cap at max items
+        if items.count > maxItems {
+            items = Array(items.prefix(maxItems))
+        }
+
+        KeychainStore.shared.save(items)
+        onUpdate?()
+    }
+
     // MARK: - Re-copy
 
     /// Copy a history item back onto the system clipboard.

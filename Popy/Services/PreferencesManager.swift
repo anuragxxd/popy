@@ -39,4 +39,21 @@ final class PreferencesManager {
         get { defaults.bool(forKey: "soundEnabled") }
         set { defaults.set(newValue, forKey: "soundEnabled") }
     }
+
+    // MARK: - Wispr Flow Integration
+
+    /// Whether the Wispr Flow integration is enabled.
+    /// Default: true (auto-enabled if Wispr Flow is detected)
+    var flowIntegrationEnabled: Bool {
+        get {
+            // Default to true if the key has never been set
+            if defaults.object(forKey: "flowIntegrationEnabled") == nil {
+                return true
+            }
+            return defaults.bool(forKey: "flowIntegrationEnabled")
+        }
+        set {
+            defaults.set(newValue, forKey: "flowIntegrationEnabled")
+        }
+    }
 }
