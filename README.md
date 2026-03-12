@@ -4,11 +4,15 @@ A tiny macOS menu bar app that remembers what you copy.
 
 Click any past copy to use it again — that's it.
 
-## Download
+## Install
 
-**[Download latest DMG](https://github.com/anuragxxd/popy/releases/latest)**
+One command:
 
-Open the DMG, drag Popy to Applications, done.
+```bash
+curl -fsSL https://raw.githubusercontent.com/anuragxxd/popy/master/install.sh | bash
+```
+
+Or **[download the DMG manually](https://github.com/anuragxxd/popy/releases/latest)** — open it, drag Popy to Applications, done.
 
 ## What it does
 
