@@ -4,6 +4,10 @@ A tiny macOS menu bar app that remembers what you copy.
 
 Click any past copy to use it again — that's it.
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="Popy screenshot" />
+</p>
+
 ## Install
 
 One command:
