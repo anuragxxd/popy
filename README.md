@@ -23,6 +23,7 @@ Or **[download the DMG manually](https://github.com/anuragxxd/popy/releases/late
 - Sits quietly in your menu bar
 - Remembers your last 25 text copies
 - Click any entry to copy it back (or paste it directly into the active app)
+- **Cmd+Shift+V** to open from anywhere, no mouse needed
 - Survives restarts — your history is saved
 - No dock icon, no windows, no clutter
 

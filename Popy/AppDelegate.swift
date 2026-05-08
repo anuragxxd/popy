@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let loginItemManager = LoginItemManager.shared
     private let preferences = PreferencesManager.shared
     private let updateManager = UpdateManager.shared
+    private let hotkeyManager = HotkeyManager.shared
 
     // MARK: - App Lifecycle
 
@@ -20,10 +21,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.buildMenu()
         }
         clipboardManager.startMonitoring()
+
+        hotkeyManager.onHotkey = { [weak self] in
+            self?.statusItem.button?.performClick(nil)
+        }
+        hotkeyManager.register()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         clipboardManager.stopMonitoring()
+        hotkeyManager.unregister()
     }
 
     // MARK: - Status Bar Setup
