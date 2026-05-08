@@ -174,15 +174,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if preferences.clickBehavior == .pasteDirectly {
-            // Need accessibility permission for CGEvent simulation
-            if KeyboardSimulator.hasAccessibilityPermission {
-                // Small delay to let the menu close and the previous app regain focus
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    KeyboardSimulator.simulatePaste()
-                }
-            } else {
-                // Prompt for permission — the copy still happened, just no auto-paste
-                KeyboardSimulator.requestAccessibilityPermission()
+            // Small delay to let the menu close and the previous app regain focus.
+            // CGEvent.post is a no-op if Accessibility isn't granted — the copy
+            // to clipboard still happened, so the user can Cmd+V manually.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                KeyboardSimulator.simulatePaste()
             }
         }
     }
