@@ -1,6 +1,6 @@
 import AppKit
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Properties
 
@@ -14,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - App Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installScreenCaptureProtection()
         setupStatusItem()
         buildMenu()
 
@@ -29,8 +30,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(self)
         clipboardManager.stopMonitoring()
         hotkeyManager.unregister()
+    }
+
+    // MARK: - Screen Capture Protection
+
+    private func installScreenCaptureProtection() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(protectWindowFromScreenCapture(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(protectWindowFromScreenCapture(_:)),
+            name: NSWindow.didBecomeMainNotification,
+            object: nil
+        )
+
+        protectAppWindowsFromScreenCapture()
+    }
+
+    @objc private func protectWindowFromScreenCapture(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        protectFromScreenCapture(window)
+    }
+
+    private func protectAppWindowsFromScreenCapture() {
+        NSApp.windows.forEach(protectFromScreenCapture)
+    }
+
+    private func protectFromScreenCapture(_ window: NSWindow) {
+        // Prevent Popy UI (menus, alerts, and any future windows) from being
+        // included in screen recordings or screen-sharing captures.
+        window.sharingType = .none
     }
 
     // MARK: - Status Bar Setup
@@ -53,6 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func buildMenu() {
         let menu = NSMenu()
+        menu.delegate = self
         menu.autoenablesItems = false
 
         // ── Clipboard history items ──────────────────────────
@@ -157,6 +195,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+        protectAppWindowsFromScreenCapture()
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        protectAppWindowsFromScreenCapture()
+        DispatchQueue.main.async { [weak self] in
+            self?.protectAppWindowsFromScreenCapture()
+        }
     }
 
     // MARK: - Menu Actions
@@ -247,6 +293,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .informational
+        alert.window.sharingType = .none
 
         if showDownload, let urlString = downloadURL {
             alert.addButton(withTitle: "Download")
