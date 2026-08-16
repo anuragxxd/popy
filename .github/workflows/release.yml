@@ -24,6 +24,25 @@ jobs:
           xcodebuild -version
           swift --version
 
+      # ── Voice engine ─────────────────────────────────────
+      # whisper.cpp is compiled from a pinned tag rather than committed, so
+      # the cache key only needs to change when build-whisper.sh does.
+      - name: Cache voice engine
+        id: cache-whisper
+        uses: actions/cache@v4
+        with:
+          path: vendor/whisper-cli
+          key: whisper-cli-${{ runner.os }}-${{ hashFiles('build-whisper.sh') }}
+
+      - name: Build voice engine
+        if: steps.cache-whisper.outputs.cache-hit != 'true'
+        run: bash build-whisper.sh
+
+      - name: Verify voice engine
+        run: |
+          test -f vendor/whisper-cli || { echo "ERROR: vendor/whisper-cli missing"; exit 1; }
+          lipo -archs vendor/whisper-cli
+
       # ── Build ────────────────────────────────────────────
       - name: Build Popy.app
         run: bash setup.sh

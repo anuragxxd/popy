@@ -20,6 +20,11 @@ jobs:
           xcodebuild -version
           swift --version
 
+      # NOTE: vendor/whisper-cli is deliberately NOT built here. Compiling
+      # whisper.cpp takes minutes and PR feedback should be fast. This job
+      # therefore also acts as the regression test for graceful degradation:
+      # Popy must build and run with the voice engine absent.
+      # The release workflow builds and bundles the engine for real.
       - name: Generate Xcode project
         run: |
           # Extract just the project generation part from setup.sh

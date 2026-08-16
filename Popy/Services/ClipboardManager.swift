@@ -61,15 +61,20 @@ final class ClipboardManager {
             return
         }
 
+        record(copiedString)
+    }
+
+    /// Insert `text` at the top of the history, de-duplicating and capping.
+    private func record(_ text: String) {
         // Deduplicate: skip if it matches the most recent item
-        if let mostRecent = items.first, mostRecent.text == copiedString {
+        if let mostRecent = items.first, mostRecent.text == text {
             return
         }
 
         // Remove any older duplicate (move to top rather than creating a second entry)
-        items.removeAll { $0.text == copiedString }
+        items.removeAll { $0.text == text }
 
-        items.insert(ClipboardItem(text: copiedString), at: 0)
+        items.insert(ClipboardItem(text: text), at: 0)
 
         // Cap at max items
         if items.count > maxItems {
@@ -89,6 +94,22 @@ final class ClipboardManager {
         pasteboard.setString(item.text, forType: .string)
         // Sync changeCount so we don't re-detect our own paste as a new entry
         lastChangeCount = pasteboard.changeCount
+    }
+
+    // MARK: - Dictation
+
+    /// Place a voice transcript on the clipboard verbatim and add it to history.
+    ///
+    /// The text is written byte-for-byte as the speech engine produced it —
+    /// no trimming, casing, or reformatting beyond what the engine did.
+    /// We record it directly rather than letting the poller notice it so the
+    /// entry appears instantly instead of up to `pollInterval` later.
+    func copyTranscript(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        lastChangeCount = pasteboard.changeCount
+        record(text)
     }
 
     // MARK: - Clear

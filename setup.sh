@@ -63,6 +63,12 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 		A1000008 /* UpdateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000011 /* UpdateManager.swift */; };
 		A1000009 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000012 /* KeychainStore.swift */; };
 		A1000010 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000013 /* HotkeyManager.swift */; };
+		A1000011 /* FnKeyListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000014 /* FnKeyListener.swift */; };
+		A1000012 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000015 /* AudioRecorder.swift */; };
+		A1000013 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000016 /* TranscriptionService.swift */; };
+		A1000014 /* VoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000017 /* VoiceInputController.swift */; };
+		A1000015 /* DictationHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000018 /* DictationHUD.swift */; };
+		A1000016 /* SystemAudioMuter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000019 /* SystemAudioMuter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -79,6 +85,12 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 		B1000011 /* UpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateManager.swift; sourceTree = "<group>"; };
 		B1000012 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		B1000013 /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
+		B1000014 /* FnKeyListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnKeyListener.swift; sourceTree = "<group>"; };
+		B1000015 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		B1000016 /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
+		B1000017 /* VoiceInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputController.swift; sourceTree = "<group>"; };
+		B1000018 /* DictationHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationHUD.swift; sourceTree = "<group>"; };
+		B1000019 /* SystemAudioMuter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioMuter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -130,6 +142,12 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 				B1000011 /* UpdateManager.swift */,
 				B1000012 /* KeychainStore.swift */,
 				B1000013 /* HotkeyManager.swift */,
+				B1000014 /* FnKeyListener.swift */,
+				B1000015 /* AudioRecorder.swift */,
+				B1000016 /* TranscriptionService.swift */,
+				B1000017 /* VoiceInputController.swift */,
+				B1000018 /* DictationHUD.swift */,
+				B1000019 /* SystemAudioMuter.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -212,6 +230,12 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 				A1000008 /* UpdateManager.swift in Sources */,
 				A1000009 /* KeychainStore.swift in Sources */,
 				A1000010 /* HotkeyManager.swift in Sources */,
+				A1000011 /* FnKeyListener.swift in Sources */,
+				A1000012 /* AudioRecorder.swift in Sources */,
+				A1000013 /* TranscriptionService.swift in Sources */,
+				A1000014 /* VoiceInputController.swift in Sources */,
+				A1000015 /* DictationHUD.swift in Sources */,
+				A1000016 /* SystemAudioMuter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -394,6 +418,23 @@ info "Build scheme generated"
 # --------------------------------------------------
 step "Building Popy (Release)..."
 
+# Prefer a stable local signing identity over ad-hoc signing.
+#
+# Ad-hoc signatures make TCC store a *cdhash* requirement, which changes on
+# every rebuild and silently revokes Accessibility — breaking paste while
+# System Settings still shows the app as allowed. A certificate-based
+# signature makes the requirement depend on the cert instead, so grants
+# survive rebuilds. See create-signing-identity.sh.
+SIGN_IDENTITY="-"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "Popy Local Code Signing"; then
+    SIGN_IDENTITY="Popy Local Code Signing"
+    info "Signing with stable identity: $SIGN_IDENTITY"
+else
+    warn "No local signing identity — falling back to ad-hoc."
+    echo "    Accessibility permission will reset on every rebuild."
+    echo "    Fix permanently with: bash create-signing-identity.sh"
+fi
+
 if [ -n "${CI:-}" ]; then
     # In CI, show full output for debugging
     xcodebuild \
@@ -401,7 +442,7 @@ if [ -n "${CI:-}" ]; then
         -scheme Popy \
         -configuration Release \
         -derivedDataPath build \
-        CODE_SIGN_IDENTITY="-" \
+        CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
         build
 else
     # Locally, filter to relevant lines
@@ -410,7 +451,7 @@ else
         -scheme Popy \
         -configuration Release \
         -derivedDataPath build \
-        CODE_SIGN_IDENTITY="-" \
+        CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
         build 2>&1 | grep -E "(BUILD|error:|warning:|Compiling|Linking|✗)" || true
 fi
 
@@ -425,6 +466,27 @@ if [ ! -d "$BUILD_APP" ]; then
 fi
 
 info "Build successful!"
+
+# --------------------------------------------------
+# 4b. Bundle the voice-input engine
+# --------------------------------------------------
+step "Bundling voice engine..."
+
+WHISPER_BIN="$PROJECT_DIR/vendor/whisper-cli"
+if [ -f "$WHISPER_BIN" ]; then
+    mkdir -p "$BUILD_APP/Contents/Resources"
+    cp "$WHISPER_BIN" "$BUILD_APP/Contents/Resources/whisper-cli"
+    chmod +x "$BUILD_APP/Contents/Resources/whisper-cli"
+
+    # Ad-hoc re-sign: copying an executable into the bundle after xcodebuild
+    # invalidates the app's signature, which makes macOS refuse to launch it.
+    codesign --force --deep --sign "$SIGN_IDENTITY" "$BUILD_APP" 2>/dev/null \
+        && info "Bundled whisper-cli ($(lipo -archs "$WHISPER_BIN" 2>/dev/null)) and re-signed" \
+        || warn "Bundled whisper-cli but re-signing failed"
+else
+    warn "vendor/whisper-cli not found — voice input will be disabled in this build."
+    echo "    Build it with: bash build-whisper.sh"
+fi
 
 # --------------------------------------------------
 # 5. Done
