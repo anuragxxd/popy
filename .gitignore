@@ -46,3 +46,7 @@ vendor/
 timeline.xctimeline
 playground.xcworkspace
 worktrees/
+
+# Build artifacts: copied from the repo root by the build script
+site/src/README.md
+site/public/assets/

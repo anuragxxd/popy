@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Always dark mode */
+    --background: #121212;
+    --foreground: #f2f2f2;
+    --card: #1a1a1a;
+    --card-foreground: #f2f2f2;
+    --popover: #121212;
+    --popover-foreground: #f2f2f2;
+    --primary: #ff6900;
+    --primary-foreground: #000000;
+    --secondary: #333333;
+    --secondary-foreground: #f2f2f2;
+    --muted: #262626;
+    --muted-foreground: #a6a6a6;
+    --accent: #ff8b38;
+    --accent-foreground: #000000;
+    --destructive: #ff0000;
+    --destructive-foreground: #f2f2f2;
+    --border: #404040;
+    --input: #404040;
+    --ring: #ff6900;
+    --chart-1: #ff6900;
+    --chart-2: #00cccc;
+    --chart-3: #ffbf00;
+    --chart-4: #aa00ff;
+    --chart-5: #0080ff;
+    --sidebar: #171717;
+    --sidebar-foreground: #fafafa;
+    --sidebar-primary: #1447e6;
+    --sidebar-primary-foreground: #fafafa;
+    --sidebar-accent: #262626;
+    --sidebar-accent-foreground: #fafafa;
+    --sidebar-border: #282828;
+    --sidebar-ring: #525252;
+    --font-sans: "IBM Plex Mono", ui-monospace, monospace;
+    --font-serif: "IBM Plex Mono", ui-monospace, monospace;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --radius: 0rem;
+  }
+
+  /* .dark block for compatibility but redundant now */
+  .dark {
+    --background: #121212;
+    --foreground: #f2f2f2;
+    --card: #1a1a1a;
+    --card-foreground: #f2f2f2;
+    --popover: #121212;
+    --popover-foreground: #f2f2f2;
+    --primary: #ff6900;
+    --primary-foreground: #000000;
+    --secondary: #333333;
+    --secondary-foreground: #f2f2f2;
+    --muted: #262626;
+    --muted-foreground: #a6a6a6;
+    --accent: #ff8b38;
+    --accent-foreground: #000000;
+    --destructive: #ff0000;
+    --destructive-foreground: #f2f2f2;
+    --border: #404040;
+    --input: #404040;
+    --ring: #ff6900;
+    --chart-1: #ff6900;
+    --chart-2: #00cccc;
+    --chart-3: #ffbf00;
+    --chart-4: #aa00ff;
+    --chart-5: #0080ff;
+    --sidebar: #171717;
+    --sidebar-foreground: #fafafa;
+    --sidebar-primary: #1447e6;
+    --sidebar-primary-foreground: #fafafa;
+    --sidebar-accent: #262626;
+    --sidebar-accent-foreground: #fafafa;
+    --sidebar-border: #282828;
+    --sidebar-ring: #525252;
+    --font-sans: "IBM Plex Mono", ui-monospace, monospace;
+    --font-serif: "IBM Plex Mono", ui-monospace, monospace;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --radius: 0rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}

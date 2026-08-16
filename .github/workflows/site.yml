@@ -1,0 +1,62 @@
+name: Deploy Site
+
+on:
+  push:
+    branches: [master]
+    # Only rebuild when something the site actually renders has changed.
+    # The README is the documentation source, so it counts.
+    paths:
+      - "site/**"
+      - "README.md"
+      - "assets/**"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy to Cloudflare Pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Vite 7 requires 20.19+ or 22.12+.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - run: npm ci
+        working-directory: site
+
+      # The build step copies ../README.md and ../assets/*.png into the site,
+      # so the docs page and the repo README can never drift apart.
+      - run: npm run build
+        working-directory: site
+
+      - name: Verify build output
+        working-directory: site
+        run: |
+          test -f dist/index.html || { echo "ERROR: dist/index.html missing"; exit 1; }
+          test -f dist/assets/logo.png || { echo "ERROR: logo not copied into dist"; exit 1; }
+          # The README is inlined into the bundle at build time; if that ever
+          # silently fails the site would deploy with an empty docs section.
+          grep -q "Fn (globe) key twice" dist/assets/*.js \
+            || { echo "ERROR: README content not embedded in the bundle"; exit 1; }
+          echo "Build verified"
+
+      - name: Deploy to Cloudflare Pages
+        working-directory: site
+        run: |
+          # `pages deploy` prompts to create a missing project, which hangs and
+          # then fails in CI. Creating it up front is idempotent — the second
+          # run just reports that it already exists.
+          npx wrangler@4 pages project create popy \
+            --production-branch master 2>/dev/null || true
+
+          npx wrangler@4 pages deploy dist --project-name popy --branch master
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
