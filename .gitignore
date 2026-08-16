@@ -25,6 +25,10 @@ xcuserdata/
 Packages/
 Package.resolved
 
+# Voice engine (built by build-whisper.sh, ~7MB universal binary)
+vendor/
+.whisper-build/
+
 # Various settings
 *.pbxuser
 !default.pbxuser
@@ -41,3 +45,4 @@ Package.resolved
 *.dSYM
 timeline.xctimeline
 playground.xcworkspace
+worktrees/

@@ -39,4 +39,34 @@ final class PreferencesManager {
         get { defaults.bool(forKey: "soundEnabled") }
         set { defaults.set(newValue, forKey: "soundEnabled") }
     }
+
+    // MARK: - Voice Input
+
+    /// Whether double-tapping Fn starts voice dictation.
+    /// Default: true
+    var voiceInputEnabled: Bool {
+        get {
+            if defaults.object(forKey: "voiceInputEnabled") == nil { return true }
+            return defaults.bool(forKey: "voiceInputEnabled")
+        }
+        set { defaults.set(newValue, forKey: "voiceInputEnabled") }
+    }
+
+    /// Whether a finished transcript is also pasted into the focused app.
+    /// Default: false — clipboard only.
+    var voicePasteDirectly: Bool {
+        get { defaults.bool(forKey: "voicePasteDirectly") }
+        set { defaults.set(newValue, forKey: "voicePasteDirectly") }
+    }
+
+    /// Whether system audio output is silenced while recording, so whatever is
+    /// playing does not bleed into the microphone.
+    /// Default: true
+    var muteWhileDictating: Bool {
+        get {
+            if defaults.object(forKey: "muteWhileDictating") == nil { return true }
+            return defaults.bool(forKey: "muteWhileDictating")
+        }
+        set { defaults.set(newValue, forKey: "muteWhileDictating") }
+    }
 }

@@ -76,6 +76,21 @@ mkdir -p "$STAGING_DIR"
 cp -R "$APP_PATH" "$STAGING_DIR/Popy.app"
 info "Copied Popy.app"
 
+# The voice engine must already be inside the bundle (setup.sh puts it there).
+# Shipping a DMG without it would silently disable dictation for every user,
+# so fall back to vendor/ and only then give up.
+if [ -f "$STAGING_DIR/Popy.app/Contents/Resources/whisper-cli" ]; then
+    info "Voice engine present ($(lipo -archs "$STAGING_DIR/Popy.app/Contents/Resources/whisper-cli" 2>/dev/null))"
+elif [ -f "$PROJECT_DIR/vendor/whisper-cli" ]; then
+    cp "$PROJECT_DIR/vendor/whisper-cli" "$STAGING_DIR/Popy.app/Contents/Resources/whisper-cli"
+    chmod +x "$STAGING_DIR/Popy.app/Contents/Resources/whisper-cli"
+    codesign --force --deep --sign - "$STAGING_DIR/Popy.app" 2>/dev/null || true
+    info "Voice engine added from vendor/ and re-signed"
+else
+    warn "No whisper-cli in the bundle — voice input will not work in this DMG."
+    echo "    Build it with: bash build-whisper.sh && bash setup.sh"
+fi
+
 # Create Applications symlink (drag-to-install target)
 ln -s /Applications "$STAGING_DIR/Applications"
 info "Created Applications symlink"
@@ -92,7 +107,18 @@ Usage:
   - Popy lives in your menu bar (top-right of screen).
   - Click the clipboard icon to see your copy history.
   - Click any item to copy it back to your clipboard.
+  - Press Cmd+Shift+V to open it from anywhere.
   - Toggle "Launch at Login" to start Popy automatically.
+
+Voice input:
+  - Press the Fn (globe) key twice to start dictating.
+  - Press Fn twice again to stop. The transcript goes to your clipboard.
+  - First use downloads a 142 MB speech model. After that it works offline —
+    your audio is transcribed on this Mac and never uploaded.
+
+  IMPORTANT: macOS binds the Fn key by default. Open
+  System Settings > Keyboard > "Press (globe) key to" and choose
+  "Do Nothing", or the emoji picker will open when you dictate.
 
 To uninstall:
   - Quit Popy from the menu bar (click icon → Quit Popy).
