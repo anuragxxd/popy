@@ -1,8 +1,35 @@
-# Popy
+<h1 align="center">
+  <img src="assets/logo.png" alt="Popy Logo" width="200">
+  <br>
+  Popy
+</h1>
 
-A tiny macOS menu bar app that remembers what you copy.
+<p align="center">
+  <strong>Talk instead of typing. Press Fn twice and your words land on the clipboard.</strong>
+</p>
 
-Click any past copy to use it again — that's it.
+<p align="center">
+  <a href="https://github.com/anuragxxd/popy/stargazers"><img src="https://img.shields.io/github/stars/anuragxxd/popy?style=flat-square" alt="GitHub stars"></a>
+  <a href="https://github.com/anuragxxd/popy/releases"><img src="https://img.shields.io/github/v/release/anuragxxd/popy?style=flat-square" alt="Release"></a>
+  <a href="https://github.com/anuragxxd/popy/blob/master/LICENSE"><img src="https://img.shields.io/github/license/anuragxxd/popy?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/macOS-12%2B-black?style=flat-square&logo=apple" alt="macOS 12+">
+</p>
+
+<p align="center">
+  Dictation that runs entirely on your Mac. No API key, no subscription,<br>
+  no account, and your voice never leaves the machine.<br>
+  Plus the clipboard history you already wanted.
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> &middot;
+  <a href="#voice-input">Voice Input</a> &middot;
+  <a href="#what-it-does">Features</a> &middot;
+  <a href="#settings">Settings</a> &middot;
+  <a href="#contribute">Build from Source</a>
+</p>
+
+---
 
 <p align="center">
   <img src="assets/screenshot.png" alt="Popy screenshot" />
@@ -20,11 +47,11 @@ Or **[download the DMG manually](https://github.com/anuragxxd/popy/releases/late
 
 ## What it does
 
-- Sits quietly in your menu bar
+- **Dictate anywhere** — press **Fn twice**, speak, press **Fn twice** again
+- Transcribes **on-device** in under a second; nothing is uploaded
 - Remembers your last 25 text copies
 - Click any entry to copy it back (or paste it directly into the active app)
 - **Cmd+Shift+V** to open from anywhere, no mouse needed
-- **Fn Fn** to dictate — speak, and the transcript lands in your clipboard
 - Survives restarts — your history is saved
 - No dock icon, no windows, no clutter
 

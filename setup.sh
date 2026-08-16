@@ -470,23 +470,34 @@ info "Build successful!"
 # --------------------------------------------------
 # 4b. Bundle the voice-input engine
 # --------------------------------------------------
-step "Bundling voice engine..."
+step "Bundling resources..."
+
+mkdir -p "$BUILD_APP/Contents/Resources"
+
+# App icon. The generated pbxproj has no resources build phase, so assets are
+# copied in here rather than by xcodebuild.
+if [ -f "$PROJECT_DIR/Popy/Resources/AppIcon.icns" ]; then
+    cp "$PROJECT_DIR/Popy/Resources/AppIcon.icns" "$BUILD_APP/Contents/Resources/AppIcon.icns"
+    info "Bundled AppIcon.icns"
+else
+    warn "AppIcon.icns not found — the app will use the generic icon."
+fi
 
 WHISPER_BIN="$PROJECT_DIR/vendor/whisper-cli"
 if [ -f "$WHISPER_BIN" ]; then
-    mkdir -p "$BUILD_APP/Contents/Resources"
     cp "$WHISPER_BIN" "$BUILD_APP/Contents/Resources/whisper-cli"
     chmod +x "$BUILD_APP/Contents/Resources/whisper-cli"
-
-    # Ad-hoc re-sign: copying an executable into the bundle after xcodebuild
-    # invalidates the app's signature, which makes macOS refuse to launch it.
-    codesign --force --deep --sign "$SIGN_IDENTITY" "$BUILD_APP" 2>/dev/null \
-        && info "Bundled whisper-cli ($(lipo -archs "$WHISPER_BIN" 2>/dev/null)) and re-signed" \
-        || warn "Bundled whisper-cli but re-signing failed"
+    info "Bundled whisper-cli ($(lipo -archs "$WHISPER_BIN" 2>/dev/null))"
 else
     warn "vendor/whisper-cli not found — voice input will be disabled in this build."
     echo "    Build it with: bash build-whisper.sh"
 fi
+
+# Re-sign last: copying anything into the bundle after xcodebuild invalidates
+# the signature, which makes macOS refuse to launch the app.
+codesign --force --deep --sign "$SIGN_IDENTITY" "$BUILD_APP" 2>/dev/null \
+    && info "Re-signed bundle" \
+    || warn "Re-signing failed"
 
 # --------------------------------------------------
 # 5. Done
