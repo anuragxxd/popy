@@ -20,7 +20,21 @@ info() { echo -e "${GREEN}[✓]${RESET} $1"; }
 warn() { echo -e "${YELLOW}[!]${RESET} $1"; }
 fail() { echo -e "${RED}[✗]${RESET} $1"; exit 1; }
 step() { echo -e "\n${BOLD}→ $1${RESET}"; }
-debug() { [ -n "${POPY_DEBUG:-}" ] && echo -e "${YELLOW}[debug]${RESET} $1"; }
+
+# Must be an if-block, NOT `[ -n "$X" ] && echo ...`.
+#
+# With that form, an unset POPY_DEBUG makes the test fail, `&&` short-circuits,
+# and the function returns 1. Under `set -e` a function returning non-zero
+# aborts the script — and because the first debug() call happens before any
+# output, the installer died silently with exit 1 and printed nothing at all.
+debug() {
+    if [ -n "${POPY_DEBUG:-}" ]; then
+        echo -e "${YELLOW}[debug]${RESET} $1"
+    fi
+}
+
+# Anything that reaches users as `curl | bash` must never fail silently.
+trap 'rc=$?; [ $rc -ne 0 ] && echo -e "\n${RED}[✗]${RESET} Install failed at line ${LINENO} (exit ${rc}). Re-run with POPY_DEBUG=1 for detail, or download the DMG from https://github.com/anuragxxd/popy/releases/latest" >&2; exit $rc' ERR
 
 REPO="anuragxxd/popy"
 TMP_DIR=$(mktemp -d)
