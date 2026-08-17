@@ -32,7 +32,7 @@
 ---
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="Popy screenshot" />
+  <img src="assets/screenshot.png" alt="Popy's menu bar window showing clipboard history and the voice input settings" width="380" />
 </p>
 
 ## Install
