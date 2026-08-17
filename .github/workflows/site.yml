@@ -16,8 +16,24 @@ jobs:
   deploy:
     name: Build & Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
+
+    # The Cloudflare credentials live as *environment* secrets on `production`,
+    # which is restricted to the `master` branch. Three consequences:
+    #
+    #  1. A job running from any other ref resolves these secrets as empty,
+    #     even via workflow_dispatch, which anyone with write access can aim
+    #     at an arbitrary branch. Repository-level secrets would be readable
+    #     from any branch; environment secrets are not.
+    #  2. This workflow has no `pull_request` trigger, so a PR cannot run it
+    #     at all — the usual "malicious PR exfiltrates secrets" path. Never
+    #     add `pull_request_target` here; it runs with full secret access.
+    #  3. Modifying the workflow to leak the token only takes effect once the
+    #     change is merged to master, which requires review.
+    environment: production
+
     permissions:
       contents: read
+
     steps:
       - uses: actions/checkout@v4
 
