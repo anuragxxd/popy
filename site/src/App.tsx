@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSlug from 'rehype-slug'
 import rehypeAutolinkHeadings from 'rehype-autolink-headings'
+import rehypeRaw from 'rehype-raw'
 import GithubSlugger from 'github-slugger'
 import { Github, Copy, Check, Menu, X, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -199,7 +200,14 @@ function App() {
           <div className="prose prose-zinc dark:prose-invert max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeSlug, rehypeAutolinkHeadings]}
+              // rehypeRaw must run first so the HTML in the README (centred
+              // image blocks, for example) becomes real nodes. Without it
+              // react-markdown escapes raw HTML and it appears on the page as
+              // literal "<p align=\"center\">..." text.
+              //
+              // Safe here because the content is our own README, inlined at
+              // build time. Never point this at user-submitted markdown.
+              rehypePlugins={[rehypeRaw, rehypeSlug, rehypeAutolinkHeadings]}
               components={{
                 h1: ({node, ...props}) => <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl mb-8" {...props} />,
                 h2: ({node, ...props}) => <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0 mb-4 mt-12" {...props} />,
