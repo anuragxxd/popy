@@ -10,8 +10,10 @@ import Carbon.HIToolbox
 /// Two important caveats:
 ///
 /// 1. `NSEvent` global monitors are **passive** — we observe the event but
-///    cannot consume it. The system's own Fn action still fires. Users should
-///    set System Settings → Keyboard → "Press 🌐 key to" → **Do Nothing**.
+///    cannot consume it, so the system's own Fn action (the emoji picker by
+///    default) would still fire. `FnSystemActionOverride` therefore sets
+///    "Press 🌐 key to" → **Do Nothing** while the listener runs, and puts the
+///    user's choice back when it stops.
 ///
 /// 2. Contrary to what you might expect, `.flagsChanged` monitoring does NOT
 ///    require Accessibility or Input Monitoring — modifier state is not
@@ -54,6 +56,8 @@ final class FnKeyListener {
     func start() {
         guard globalMonitor == nil else { return }
 
+        FnSystemActionOverride.apply()
+
         // Global: fires when any *other* app is frontmost. This is the normal case
         // for Popy, which is an LSUIElement (menu-bar-only) app.
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
@@ -79,6 +83,7 @@ final class FnKeyListener {
         }
         fnIsDown = false
         lastPressTime = 0
+        FnSystemActionOverride.restore()
     }
 
     // MARK: - Event handling
@@ -117,6 +122,82 @@ final class FnKeyListener {
             }
         } else {
             lastPressTime = now
+        }
+    }
+}
+
+// MARK: - System Fn action
+
+/// Suppresses the system's Fn (globe) action — the emoji picker by default —
+/// while Popy is listening for Fn Fn.
+///
+/// This is the same preference System Settings → Keyboard → "Press 🌐 key to"
+/// writes: `AppleFnUsageType` in `com.apple.HIToolbox`
+/// (0 Do Nothing, 1 Change Input Source, 2 Show Emoji & Symbols, 3 Start Dictation).
+/// Consuming the event ourselves is not an option: the picker is triggered
+/// below the level a passive monitor can see, and an event tap would need
+/// Input Monitoring permission that this feature otherwise avoids.
+///
+/// The user's original value is persisted before it is overridden, so it
+/// survives a crash and is restored on the next clean stop.
+enum FnSystemActionOverride {
+
+    private static let domain = "com.apple.HIToolbox" as CFString
+    private static let key = "AppleFnUsageType" as CFString
+    private static let doNothing = 0
+
+    /// Popy's own record of the user's value. Absent: nothing overridden.
+    /// -1: the key was unset (system default) before we touched it.
+    private static let savedKey = "savedAppleFnUsageType"
+    private static let unsetMarker = -1
+
+    static func apply() {
+        let current = readValue()
+        guard current != doNothing else { return }
+
+        // Only record the original once — after a crash the current value is
+        // already ours, and overwriting would lose the user's real setting.
+        if UserDefaults.standard.object(forKey: savedKey) == nil {
+            UserDefaults.standard.set(current ?? unsetMarker, forKey: savedKey)
+        }
+        writeValue(doNothing)
+    }
+
+    static func restore() {
+        guard let saved = UserDefaults.standard.object(forKey: savedKey) as? Int else { return }
+        UserDefaults.standard.removeObject(forKey: savedKey)
+
+        // If the user changed the setting themselves while Popy ran, theirs wins.
+        guard readValue() == doNothing else { return }
+        writeValue(saved == unsetMarker ? nil : saved)
+    }
+
+    private static func readValue() -> Int? {
+        CFPreferencesCopyValue(key, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? Int
+    }
+
+    private static func writeValue(_ value: Int?) {
+        CFPreferencesSetValue(key, value.map { $0 as CFNumber }, domain,
+                              kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+        CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+        activate()
+    }
+
+    /// Writing the preference alone only takes effect at next login.
+    /// `activateSettings -u` is what System Settings uses to apply keyboard
+    /// preferences to the running session.
+    private static func activate() {
+        let tool = "/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings"
+        guard FileManager.default.isExecutableFile(atPath: tool) else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = ["-u"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            print("Popy [Fn] could not apply keyboard settings: \(error.localizedDescription)")
         }
     }
 }

@@ -71,9 +71,10 @@ pattern-matching the transcript, so real words are never dropped.
 
 **First run** downloads a 142 MB speech model. After that it works offline.
 
-**One setup step:** macOS binds the Fn key by default. Go to
-**System Settings → Keyboard → "Press 🌐 key to"** and choose **Do Nothing**,
-otherwise the emoji picker will open every time you dictate.
+**No emoji picker.** macOS binds the Fn key to the emoji picker by default.
+While dictation is on, Popy sets **System Settings → Keyboard → "Press 🌐 key
+to"** to **Do Nothing**, and puts your original choice back when you quit Popy
+or turn dictation off.
 
 ### Where it runs
 
