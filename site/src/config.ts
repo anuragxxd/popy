@@ -1,7 +1,7 @@
 export const siteConfig = {
   name: "Popy",
   description: "On-device voice dictation for macOS. Press Fn twice to talk, your words land on the clipboard.",
-  version: "v1.4.0",
+  version: "v1.4.1",
   links: {
     github: "https://github.com/anuragxxd/popy",
     releases: "https://github.com/anuragxxd/popy/releases/latest",

@@ -74,7 +74,8 @@ pattern-matching the transcript, so real words are never dropped.
 **No emoji picker.** macOS binds the Fn key to the emoji picker by default.
 While dictation is on, Popy sets **System Settings → Keyboard → "Press 🌐 key
 to"** to **Do Nothing**, and puts your original choice back when you quit Popy
-or turn dictation off.
+or turn dictation off. If the picker still appears, set that option to
+**Do Nothing** yourself.
 
 ### Where it runs
 
