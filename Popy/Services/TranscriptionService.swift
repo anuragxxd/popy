@@ -3,6 +3,8 @@ import CommonCrypto
 import Foundation
 
 /// Runs local speech-to-text by shelling out to `whisper-cli` (whisper.cpp, MIT).
+/// Used where Apple's SpeechAnalyzer is unavailable — Intel Macs and macOS
+/// 12–25 — or as a fallback if it fails; see `AppleSpeechEngine`.
 ///
 /// Everything happens on-device: the audio never leaves the machine and there
 /// is no API key, no network call at transcription time, and no per-use cost.

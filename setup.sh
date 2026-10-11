@@ -69,6 +69,7 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 		A1000014 /* VoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000017 /* VoiceInputController.swift */; };
 		A1000015 /* DictationHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000018 /* DictationHUD.swift */; };
 		A1000016 /* SystemAudioMuter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000019 /* SystemAudioMuter.swift */; };
+		A1000017 /* AppleSpeechEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000020 /* AppleSpeechEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -91,6 +92,7 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 		B1000017 /* VoiceInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputController.swift; sourceTree = "<group>"; };
 		B1000018 /* DictationHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationHUD.swift; sourceTree = "<group>"; };
 		B1000019 /* SystemAudioMuter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioMuter.swift; sourceTree = "<group>"; };
+		B1000020 /* AppleSpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -148,6 +150,7 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 				B1000017 /* VoiceInputController.swift */,
 				B1000018 /* DictationHUD.swift */,
 				B1000019 /* SystemAudioMuter.swift */,
+				B1000020 /* AppleSpeechEngine.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -236,6 +239,7 @@ cat > Popy.xcodeproj/project.pbxproj << 'PBXPROJ'
 				A1000014 /* VoiceInputController.swift in Sources */,
 				A1000015 /* DictationHUD.swift in Sources */,
 				A1000016 /* SystemAudioMuter.swift in Sources */,
+				A1000017 /* AppleSpeechEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
