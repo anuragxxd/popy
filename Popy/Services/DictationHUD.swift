@@ -15,7 +15,8 @@ final class DictationHUD {
     enum Mode {
         case listening
         case transcribing
-        case copied(String)
+        /// The transcript, and where it went ("Copied", "Pasted"…).
+        case delivered(String, status: String)
         case failed(String)
     }
 
@@ -117,9 +118,9 @@ final class DictationHUD {
             showMeter = false
             meter?.isRunning = false
 
-        case .copied(let text):
+        case .delivered(let text, let status):
             iconView?.image = symbol("checkmark.circle.fill", tint: .systemGreen)
-            setText("Copied", detail: preview(text))
+            setText(status, detail: preview(text))
             showMeter = false
             meter?.isRunning = false
             scheduleHide(after: 2.5)

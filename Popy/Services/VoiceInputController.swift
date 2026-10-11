@@ -6,8 +6,8 @@ import AppKit
 ///
 ///     idle ──Fn Fn──▶ recording ──Fn Fn──▶ transcribing ──▶ idle
 ///
-/// The finished transcript is placed on the pasteboard verbatim. Nothing
-/// rewrites, summarises, or "cleans up" the text.
+/// The finished transcript is copied, pasted, or both, exactly as the engine
+/// produced it. Nothing rewrites, summarises, or "cleans up" the text.
 final class VoiceInputController {
 
     enum State: Equatable {
@@ -270,7 +270,6 @@ final class VoiceInputController {
         switch result {
         case .success(let text) where !text.isEmpty:
             deliver(text)
-            DictationHUD.shared.show(.copied(text))
         case .success:
             DictationHUD.shared.show(.failed("No speech detected."))
         case .failure(let error):
@@ -290,7 +289,6 @@ final class VoiceInputController {
             switch result {
             case .success(let text):
                 self.deliver(text)
-                DictationHUD.shared.show(.copied(text))
             case .failure(TranscriptionService.TranscriptionError.emptyResult):
                 // Silence or unintelligible audio. Show it in the HUD, which
                 // self-dismisses, rather than interrupting with a modal alert.
@@ -302,19 +300,44 @@ final class VoiceInputController {
         }
     }
 
-    /// Put the transcript on the clipboard exactly as the engine produced it.
+    /// How long a transcript sits on the clipboard when it is only there to
+    /// be pasted. Wispr Flow restores after about half a second; this gives
+    /// slower apps more room to act on the Cmd+V.
+    private static let pasteRestoreDelay: TimeInterval = 1.0
+
+    /// Hand the transcript over exactly as the engine produced it, and show
+    /// where it went. It always goes into the history too, so a paste that
+    /// missed its target can still be recovered from the menu.
     private func deliver(_ text: String) {
-        ClipboardManager.shared.copyTranscript(text)
+        let clipboard = ClipboardManager.shared
+        let paste = preferences.voicePasteDirectly
+        let canPaste = paste && KeyboardSimulator.hasAccessibilityPermission
+
+        let status: String
+        if canPaste && !preferences.voiceCopyToClipboard {
+            clipboard.copyTranscriptBriefly(text, restoringAfter: Self.pasteRestoreDelay)
+            status = "Pasted"
+        } else if preferences.voiceCopyToClipboard || paste {
+            // Without Accessibility the simulated Cmd+V silently does
+            // nothing, so the transcript stays on the clipboard to paste.
+            clipboard.copyTranscript(text)
+            status = canPaste ? "Pasted" : "Copied"
+        } else {
+            clipboard.saveTranscript(text)
+            status = "Saved to history"
+        }
 
         if preferences.soundEnabled {
             NSSound(named: .init("Tink"))?.play()
         }
 
-        if preferences.voicePasteDirectly {
+        if paste {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 KeyboardSimulator.simulatePaste()
             }
         }
+
+        DictationHUD.shared.show(.delivered(text, status: status))
     }
 
     // MARK: - Model bootstrap

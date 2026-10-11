@@ -52,8 +52,20 @@ final class PreferencesManager {
         set { defaults.set(newValue, forKey: "voiceInputEnabled") }
     }
 
-    /// Whether a finished transcript is also pasted into the focused app.
-    /// Default: false — clipboard only.
+    /// Whether a finished transcript stays on the clipboard. When off, a
+    /// pasted transcript is on it only long enough to paste and the previous
+    /// contents come back; with pasting off too, it only goes into history.
+    /// Default: true
+    var voiceCopyToClipboard: Bool {
+        get {
+            if defaults.object(forKey: "voiceCopyToClipboard") == nil { return true }
+            return defaults.bool(forKey: "voiceCopyToClipboard")
+        }
+        set { defaults.set(newValue, forKey: "voiceCopyToClipboard") }
+    }
+
+    /// Whether a finished transcript is pasted into the focused app.
+    /// Default: false
     var voicePasteDirectly: Bool {
         get { defaults.bool(forKey: "voicePasteDirectly") }
         set { defaults.set(newValue, forKey: "voicePasteDirectly") }
