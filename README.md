@@ -108,7 +108,11 @@ All toggleable from the menu:
 - **Sound on Copy** — subtle audio feedback
 - **Launch at Login** — start Popy automatically
 - **Dictate with Fn Fn** — enable or disable voice input
-- **Paste Transcript Directly** — auto-paste after dictating instead of clipboard-only
+- **Copy Transcript to Clipboard** — leave the transcript on the clipboard (on
+  by default). Turn it off and a pasted transcript won't replace what you had
+  copied: it is pasted, then your previous clipboard comes back. With pasting
+  off too, transcripts only go into Popy's history.
+- **Paste Transcript Directly** — paste the transcript into the app you're using
 - **Mute Audio While Dictating** — silence system output while recording so it
   doesn't bleed into the microphone (on by default)
 

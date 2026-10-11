@@ -112,6 +112,91 @@ final class ClipboardManager {
         record(text)
     }
 
+    /// Put a transcript on the clipboard only long enough to paste it, then
+    /// put back whatever was there before. It is still added to history.
+    ///
+    /// A simulated Cmd+V is queued, so nothing reports when the target app
+    /// has read the clipboard; `delay` is a safety margin, not a signal. If
+    /// anything else is copied in the meantime, that is kept instead.
+    func copyTranscriptBriefly(_ text: String, restoringAfter delay: TimeInterval) {
+        let pasteboard = NSPasteboard.general
+
+        // Dictating again before the last restore ran: the clipboard still
+        // holds that transcript, so keep what the user had before either.
+        let previous: [Formats]
+        if let pending = pendingRestore, pending.changeCount == pasteboard.changeCount {
+            previous = pending.contents
+        } else {
+            previous = contents(of: pasteboard)
+        }
+
+        // Kept off the user's other devices, and marked so other clipboard
+        // managers do not record it (https://nspasteboard.org).
+        pasteboard.prepareForNewContents(with: .currentHostOnly)
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        item.setData(Data(), forType: Self.transientType)
+        pasteboard.writeObjects([item])
+        lastChangeCount = pasteboard.changeCount
+        record(text)
+
+        let restore = PendingRestore(contents: previous, changeCount: pasteboard.changeCount)
+        pendingRestore = restore
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self, self.pendingRestore?.changeCount == restore.changeCount else { return }
+            self.pendingRestore = nil
+            guard pasteboard.changeCount == restore.changeCount else { return }
+            self.write(restore.contents, to: pasteboard)
+            // Not a new copy, so keep the poller from recording it again.
+            self.lastChangeCount = pasteboard.changeCount
+        }
+    }
+
+    /// Add a voice transcript to history without touching the clipboard.
+    func saveTranscript(_ text: String) {
+        record(text)
+    }
+
+    // MARK: - Restoring
+
+    /// One clipboard entry in every format it was offered in, in order.
+    private typealias Formats = [(type: NSPasteboard.PasteboardType, data: Data)]
+
+    /// What the clipboard held before a transcript was pasted through it,
+    /// and the change count at which the transcript is still sitting there.
+    private struct PendingRestore {
+        let contents: [Formats]
+        let changeCount: Int
+    }
+
+    private var pendingRestore: PendingRestore?
+
+    private static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+
+    /// Everything on the pasteboard, in every format, so it can be put back
+    /// exactly — rich text, images, and files as well as plain text.
+    private func contents(of pasteboard: NSPasteboard) -> [Formats] {
+        (pasteboard.pasteboardItems ?? []).map { item in
+            item.types.compactMap { type in
+                item.data(forType: type).map { (type, $0) }
+            }
+        }
+    }
+
+    private func write(_ contents: [Formats], to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        let items = contents.map { formats -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            for (type, data) in formats {
+                item.setData(data, forType: type)
+            }
+            return item
+        }
+        if !items.isEmpty {
+            pasteboard.writeObjects(items)
+        }
+    }
+
     // MARK: - Clear
 
     /// Clear all clipboard history from memory and Keychain.

@@ -279,6 +279,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         voiceToggle.state = preferences.voiceInputEnabled ? .on : .off
         menu.addItem(voiceToggle)
 
+        let voiceCopyItem = NSMenuItem(title: "Copy Transcript to Clipboard", action: #selector(toggleVoiceCopy(_:)), keyEquivalent: "")
+        voiceCopyItem.target = self
+        voiceCopyItem.state = preferences.voiceCopyToClipboard ? .on : .off
+        voiceCopyItem.isEnabled = preferences.voiceInputEnabled
+        menu.addItem(voiceCopyItem)
+
         let voicePasteItem = NSMenuItem(title: "Paste Transcript Directly", action: #selector(toggleVoicePaste(_:)), keyEquivalent: "")
         voicePasteItem.target = self
         voicePasteItem.state = preferences.voicePasteDirectly ? .on : .off
@@ -489,6 +495,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !preferences.muteWhileDictating {
             SystemAudioMuter.shared.restore()
         }
+        buildMenu()
+    }
+
+    @objc private func toggleVoiceCopy(_ sender: NSMenuItem) {
+        preferences.voiceCopyToClipboard.toggle()
         buildMenu()
     }
 
