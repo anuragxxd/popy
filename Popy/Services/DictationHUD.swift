@@ -518,17 +518,33 @@ private final class LevelMeterView: NSView {
     private static let releaseTau: Float = 0.180
     private static let barTau: Float = 0.035
 
+    /// The incoming level spans -50...0 dBFS, but normal speech only reaches
+    /// roughly -42...-20 dBFS (about 0.15...0.6), so mapped as-is the bars
+    /// barely clear half height. Stretch that band across the full meter.
+    /// Room tone (around 0.02) stays below `displayFloor` and reads as flat.
+    private static let displayFloor: Float = 0.12
+    private static let displayCeiling: Float = 0.6
+
+    private static func displayLevel(_ level: Float) -> Float {
+        let t = (level - displayFloor) / (displayCeiling - displayFloor)
+        // Square-root curve lifts quiet speech so soft words still register.
+        return max(0, min(1, t)).squareRoot()
+    }
+
     private func tick() {
         let dt = Float(Self.frameInterval)
-        let tau = incoming > smoothed ? Self.attackTau : Self.releaseTau
-        smoothed += (incoming - smoothed) * (1 - exp(-dt / tau))
+        let level = Self.displayLevel(incoming)
+        let tau = level > smoothed ? Self.attackTau : Self.releaseTau
+        smoothed += (level - smoothed) * (1 - exp(-dt / tau))
 
         // Slight per-bar weighting reads as a waveform rather than one block
-        // moving up and down.
-        let weights: [CGFloat] = [0.62, 1.0, 0.84, 0.55]
+        // moving up and down. A little per-frame jitter, scaled by the level,
+        // keeps the bars moving independently while speaking.
+        let weights: [CGFloat] = [0.75, 1.0, 0.9, 0.7]
         let barCoefficient = CGFloat(1 - exp(-dt / Self.barTau))
         for i in 0..<barCount {
-            targets[i] = CGFloat(smoothed) * weights[i]
+            let jitter = CGFloat.random(in: 0.8...1.15)
+            targets[i] = CGFloat(smoothed) * weights[i] * jitter
             current[i] += (targets[i] - current[i]) * barCoefficient
         }
 
