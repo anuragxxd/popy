@@ -1,7 +1,8 @@
 import AppKit
 
 /// Owns the dictation state machine and wires together the Fn listener,
-/// the recorder, and the local transcription engine.
+/// the recorder, and the on-device transcription engine: Apple's
+/// SpeechAnalyzer where the Mac supports it, Whisper everywhere else.
 ///
 ///     idle ──Fn Fn──▶ recording ──Fn Fn──▶ transcribing ──▶ idle
 ///
@@ -43,6 +44,10 @@ final class VoiceInputController {
 
     private var isDownloadingModel = false
 
+    /// Apple's transcription of the recording in progress. Nil when this Mac
+    /// uses Whisper, which only starts once recording has stopped.
+    private var liveTranscription: LiveTranscription?
+
     /// True between requesting microphone access and the recorder actually
     /// starting. Guards the async gap on first run.
     private var isPreparing = false
@@ -59,13 +64,7 @@ final class VoiceInputController {
         recorder.onAutoStop = { [weak self] url in
             guard let self = self else { return }
             SystemAudioMuter.shared.restore()
-            guard self.recorder.containedSpeech else {
-                try? FileManager.default.removeItem(at: url)
-                self.state = .idle
-                DictationHUD.shared.show(.failed("No speech detected."))
-                return
-            }
-            self.beginTranscription(of: url)
+            self.handleFinishedRecording(at: url)
         }
 
         recorder.onLevel = { level in
@@ -74,14 +73,14 @@ final class VoiceInputController {
 
         if preferences.voiceInputEnabled {
             FnKeyListener.shared.start()
-            // Prime the Metal shader cache so the first dictation is not slow.
-            transcriber.warmUpIfNeeded()
+            warmUpEngine()
         }
     }
 
     func stop() {
         FnKeyListener.shared.stop()
         recorder.cancel()
+        discardLiveTranscription()
         // Never leave the machine muted on the way out.
         SystemAudioMuter.shared.restore()
         state = .idle
@@ -91,9 +90,10 @@ final class VoiceInputController {
         preferences.voiceInputEnabled = enabled
         if enabled {
             FnKeyListener.shared.start()
-            transcriber.warmUpIfNeeded()
+            warmUpEngine()
         } else {
             recorder.cancel()
+            discardLiveTranscription()
             SystemAudioMuter.shared.restore()
             FnKeyListener.shared.stop()
             state = .idle
@@ -132,15 +132,18 @@ final class VoiceInputController {
         guard !isPreparing else { return }
 
         // Guard the whole pipeline up front so the user is never left holding
-        // a recording that cannot possibly be transcribed.
-        guard TranscriptionService.resolveBinary() != nil else {
-            onNotify?(TranscriptionService.TranscriptionError.binaryMissing.localizedDescription)
-            return
-        }
+        // a recording that cannot possibly be transcribed. Apple's engine
+        // needs nothing from Popy; Whisper needs its binary and model.
+        if !AppleSpeechEngine.isSupported {
+            guard TranscriptionService.resolveBinary() != nil else {
+                onNotify?(TranscriptionService.TranscriptionError.binaryMissing.localizedDescription)
+                return
+            }
 
-        guard TranscriptionService.isModelInstalled else {
-            downloadModelThenNotify()
-            return
+            guard TranscriptionService.isModelInstalled else {
+                downloadModelThenNotify()
+                return
+            }
         }
 
         isPreparing = true
@@ -152,6 +155,14 @@ final class VoiceInputController {
                 self.onNotify?(AudioRecorder.RecorderError.microphoneDenied.localizedDescription)
                 return
             }
+
+            // Apple transcribes while the user speaks, so connect it before
+            // the first buffer arrives.
+            if let live = AppleSpeechEngine.makeLiveTranscription() {
+                self.liveTranscription = live
+                self.recorder.onAudio = { live.append($0) }
+            }
+
             do {
                 try self.recorder.start()
                 self.state = .recording
@@ -163,6 +174,7 @@ final class VoiceInputController {
                     SystemAudioMuter.shared.mute()
                 }
             } catch {
+                self.discardLiveTranscription()
                 self.state = .idle
                 DictationHUD.shared.show(.failed(error.localizedDescription))
                 self.onNotify?(error.localizedDescription)
@@ -177,32 +189,95 @@ final class VoiceInputController {
 
         do {
             let url = try recorder.stop()
-
-            // Reject silence using the audio itself rather than the transcript.
-            // Whisper reliably hallucinates "you" (and similar filler) on empty
-            // input, and pattern-matching those strings afterwards would risk
-            // deleting words the user actually said.
-            guard recorder.containedSpeech else {
-                try? FileManager.default.removeItem(at: url)
-                state = .idle
-                DictationHUD.shared.show(.failed("No speech detected."))
-                return
-            }
-
-            beginTranscription(of: url)
+            handleFinishedRecording(at: url)
         } catch AudioRecorder.RecorderError.tooShort {
             // Almost certainly a stray double-tap. Say so briefly rather than
             // vanishing without explanation.
+            discardLiveTranscription()
             state = .idle
             DictationHUD.shared.show(.failed("Too short — hold on and speak first."))
         } catch {
+            discardLiveTranscription()
             state = .idle
             DictationHUD.shared.show(.failed(error.localizedDescription))
             onNotify?(error.localizedDescription)
         }
     }
 
+    /// Shared by a manual stop and the max-duration auto-stop.
+    private func handleFinishedRecording(at url: URL) {
+        let live = liveTranscription
+        liveTranscription = nil
+        recorder.onAudio = nil
+
+        // Reject silence using the audio itself rather than the transcript.
+        // Whisper reliably hallucinates "you" (and similar filler) on empty
+        // input, and pattern-matching those strings afterwards would risk
+        // deleting words the user actually said.
+        guard recorder.containedSpeech else {
+            live?.cancel()
+            try? FileManager.default.removeItem(at: url)
+            state = .idle
+            DictationHUD.shared.show(.failed("No speech detected."))
+            return
+        }
+
+        if let live = live {
+            finishLiveTranscription(live, recording: url)
+        } else {
+            beginTranscription(of: url)
+        }
+    }
+
+    /// Drop Apple's in-flight transcription when its recording is abandoned.
+    private func discardLiveTranscription() {
+        recorder.onAudio = nil
+        liveTranscription?.cancel()
+        liveTranscription = nil
+    }
+
     // MARK: - Transcription
+
+    /// Apple has transcribed most of the recording by now; this waits for the
+    /// last words. The WAV is kept until then so that if Apple's engine fails,
+    /// Whisper (when set up) can still transcribe it rather than the dictation
+    /// being lost.
+    private func finishLiveTranscription(_ live: LiveTranscription, recording url: URL) {
+        state = .transcribing
+        DictationHUD.shared.show(.transcribing)
+
+        Task { @MainActor [weak self] in
+            let result: Result<String, Error>
+            do {
+                result = .success(try await live.finish())
+            } catch {
+                result = .failure(error)
+            }
+            self?.completeLiveTranscription(result, recording: url)
+        }
+    }
+
+    private func completeLiveTranscription(_ result: Result<String, Error>, recording url: URL) {
+        if case .failure(let error) = result, TranscriptionService.isReady {
+            print("Popy [Speech] Apple transcription failed, using Whisper: \(error.localizedDescription)")
+            beginTranscription(of: url)  // deletes the recording when done
+            return
+        }
+
+        try? FileManager.default.removeItem(at: url)
+        state = .idle
+
+        switch result {
+        case .success(let text) where !text.isEmpty:
+            deliver(text)
+            DictationHUD.shared.show(.copied(text))
+        case .success:
+            DictationHUD.shared.show(.failed("No speech detected."))
+        case .failure(let error):
+            DictationHUD.shared.show(.failed(error.localizedDescription))
+            onNotify?(error.localizedDescription)
+        }
+    }
 
     private func beginTranscription(of url: URL) {
         state = .transcribing
@@ -243,6 +318,16 @@ final class VoiceInputController {
     }
 
     // MARK: - Model bootstrap
+
+    /// Apple's engine only needs macOS to have its model. Whisper's first run
+    /// compiles Metal shaders, so pay that at launch, not on first dictation.
+    private func warmUpEngine() {
+        if AppleSpeechEngine.isSupported {
+            AppleSpeechEngine.installModelInBackground()
+        } else {
+            transcriber.warmUpIfNeeded()
+        }
+    }
 
     /// First run: fetch the 142 MiB model, then tell the user it is ready.
     /// We deliberately do not auto-start recording afterwards — by then the

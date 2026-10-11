@@ -414,10 +414,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func voiceDiagnostics() -> [String] {
         var problems: [String] = []
 
-        if TranscriptionService.resolveBinary() == nil {
-            problems.append("⚠ Engine missing — reinstall Popy")
-        } else if !TranscriptionService.isModelInstalled {
-            problems.append("⚠ Model not downloaded — start dictation once")
+        // Whisper's binary and model only matter where Apple's engine is unavailable.
+        if !AppleSpeechEngine.isSupported {
+            if TranscriptionService.resolveBinary() == nil {
+                problems.append("⚠ Engine missing — reinstall Popy")
+            } else if !TranscriptionService.isModelInstalled {
+                problems.append("⚠ Model not downloaded — start dictation once")
+            }
         }
 
         if AudioRecorder.microphoneAuthorization == .denied

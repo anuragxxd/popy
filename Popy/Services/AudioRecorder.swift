@@ -3,7 +3,7 @@ import CoreAudio
 import Foundation
 
 /// Captures microphone audio and writes it to a temporary WAV file in the
-/// exact format whisper.cpp expects: 16 kHz, mono, 16-bit signed PCM.
+/// format both speech engines take: 16 kHz, mono, 16-bit signed PCM.
 ///
 /// The hardware input node runs at its own rate (typically 44.1/48 kHz,
 /// often stereo), so every buffer is pushed through an `AVAudioConverter`
@@ -35,7 +35,7 @@ final class AudioRecorder {
 
     static let shared = AudioRecorder()
 
-    /// Whisper operates on 16 kHz mono audio.
+    /// Both Whisper and Apple's SpeechAnalyzer operate on 16 kHz mono audio.
     private static let targetSampleRate: Double = 16_000
 
     /// Hard ceiling so a forgotten recording cannot fill the disk.
@@ -53,7 +53,6 @@ final class AudioRecorder {
     private var engine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var converter: AVAudioConverter?
-    private var outputFormat: AVAudioFormat?
     private var startedAt: Date?
     private var autoStopTimer: Timer?
 
@@ -90,6 +89,10 @@ final class AudioRecorder {
     /// Normalised input level (0...1), emitted per buffer while recording.
     /// Drives the on-screen meter so the user can see they are being heard.
     var onLevel: ((Float) -> Void)?
+
+    /// Each buffer as it is written: 16 kHz mono Int16. Called on the audio
+    /// tap's thread. Lets Apple's transcriber work while the user speaks.
+    var onAudio: ((AVAudioPCMBuffer) -> Void)?
 
     private init() {}
 
@@ -188,7 +191,6 @@ final class AudioRecorder {
 
         self.audioFile = file
         self.converter = converter
-        self.outputFormat = targetFormat
         self.currentURL = url
 
         // 1024 frames rather than 4096: the tap callback rate is what drives
@@ -279,7 +281,6 @@ final class AudioRecorder {
         startedAt = nil
         audioFile = nil
         converter = nil
-        outputFormat = nil
         currentURL = nil
     }
 
@@ -341,40 +342,15 @@ final class AudioRecorder {
     /// Convert one hardware buffer to 16 kHz mono Int16 and append it to the file.
     private func append(_ buffer: AVAudioPCMBuffer) {
         guard let converter = converter,
-              let outputFormat = outputFormat,
-              let file = audioFile else { return }
-
-        // Output capacity must account for the sample-rate ratio, plus a little
-        // slack for the converter's internal resampling latency.
-        let ratio = outputFormat.sampleRate / buffer.format.sampleRate
-        let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 1024
-
-        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
-            return
-        }
-
-        var consumed = false
-        var conversionError: NSError?
-
-        let status = converter.convert(to: outputBuffer, error: &conversionError) { _, statusPtr in
-            // Hand the converter each input buffer exactly once; returning nil
-            // afterwards tells it this batch is complete.
-            if consumed {
-                statusPtr.pointee = .noDataNow
-                return nil
-            }
-            consumed = true
-            statusPtr.pointee = .haveData
-            return buffer
-        }
-
-        guard status != .error, outputBuffer.frameLength > 0 else { return }
+              let file = audioFile,
+              let outputBuffer = converter.convertedBuffer(buffer) else { return }
 
         do {
             try file.write(from: outputBuffer)
         } catch {
             print("Popy [Audio] failed writing buffer: \(error.localizedDescription)")
         }
+        onAudio?(outputBuffer)
     }
 
     /// Compute RMS of the raw input buffer and map it onto a perceptual 0...1
@@ -409,5 +385,38 @@ final class AudioRecorder {
     private static func makeTempURL() -> URL {
         let name = "popy-dictation-\(UUID().uuidString).wav"
         return FileManager.default.temporaryDirectory.appendingPathComponent(name)
+    }
+}
+
+extension AVAudioConverter {
+    /// Convert one buffer to `outputFormat`, or nil if it produced nothing.
+    func convertedBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        // Output capacity must account for the sample-rate ratio, plus a little
+        // slack for the converter's internal resampling latency.
+        let ratio = outputFormat.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 1024
+
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
+            return nil
+        }
+
+        var consumed = false
+        var conversionError: NSError?
+
+        let status = convert(to: outputBuffer, error: &conversionError) { _, statusPtr in
+            // Hand the converter each input buffer exactly once; returning nil
+            // afterwards tells it this batch is complete. `.noDataNow` (not
+            // `.endOfStream`) keeps its resampler state for the next buffer.
+            if consumed {
+                statusPtr.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            statusPtr.pointee = .haveData
+            return buffer
+        }
+
+        guard status != .error, outputBuffer.frameLength > 0 else { return nil }
+        return outputBuffer
     }
 }

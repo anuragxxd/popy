@@ -69,7 +69,8 @@ speech recognisers otherwise hallucinate filler text ("you", "Thank you.")
 when handed silence. Detection is based on the audio level, never on
 pattern-matching the transcript, so real words are never dropped.
 
-**First run** downloads a 142 MB speech model. After that it works offline.
+**First run** on Intel Macs and macOS 12–25 downloads a 142 MB speech model.
+After that it works offline. Macs using Apple's model download nothing.
 
 **No emoji picker.** macOS binds the Fn key to the emoji picker by default.
 While dictation is on, Popy sets **System Settings → Keyboard → "Press 🌐 key
@@ -79,11 +80,18 @@ or turn dictation off. If the picker still appears, set that option to
 
 ### Where it runs
 
-Transcription happens entirely on your Mac using
-[whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT) with OpenAI's
-`base.en` model. There is no API key, no subscription, no per-use cost, and
-your audio never leaves the machine. Typical latency is well under a second
-for a short utterance on Apple silicon.
+Transcription happens entirely on your Mac:
+
+- **Apple silicon, macOS 26 or later:** Apple's own on-device speech model
+  (SpeechAnalyzer), which macOS installs and keeps up to date. In side-by-side
+  tests it was far more accurate than Whisper. It transcribes while you speak,
+  so the text is ready about 0.2 seconds after you stop.
+- **Intel Macs and macOS 12–25:**
+  [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT) with OpenAI's
+  `base.en` model. Typical latency is well under a second for a short utterance.
+
+Either way there is no API key, no subscription, no per-use cost, and your
+audio never leaves the machine.
 
 ## Security
 
@@ -112,7 +120,8 @@ All toggleable from the menu:
 
 ## Requirements
 
-macOS 12 (Monterey) or later.
+macOS 12 (Monterey) or later. Apple's speech model needs an Apple-silicon Mac
+with macOS 26 or later; other Macs use Whisper.
 
 ## Contribute
 
@@ -129,8 +138,9 @@ bash setup.sh                     # builds Popy.app
 ```
 
 `setup.sh` alone is enough to get a working build. The other two are one-time
-setup and both degrade gracefully: without the engine, voice input is simply
-reported as unavailable; without the signing identity, the app falls back to
+setup and both degrade gracefully: without the engine, voice input is reported
+as unavailable on Macs that need Whisper (Apple-silicon Macs on macOS 26+ use
+Apple's model instead); without the signing identity, the app falls back to
 ad-hoc signing.
 
 **Why the signing step matters.** macOS records permissions against a code
