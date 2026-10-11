@@ -131,73 +131,83 @@ final class FnKeyListener {
 /// Suppresses the system's Fn (globe) action — the emoji picker by default —
 /// while Popy is listening for Fn Fn.
 ///
-/// This is the same preference System Settings → Keyboard → "Press 🌐 key to"
-/// writes: `AppleFnUsageType` in `com.apple.HIToolbox`
+/// This is the setting behind System Settings → Keyboard → "Press 🌐 key to"
 /// (0 Do Nothing, 1 Change Input Source, 2 Show Emoji & Symbols, 3 Start Dictation).
-/// Consuming the event ourselves is not an option: the picker is triggered
-/// below the level a passive monitor can see, and an event tap would need
-/// Input Monitoring permission that this feature otherwise avoids.
+/// Writing its preference (`AppleFnUsageType` in `com.apple.HIToolbox`) is
+/// not enough: HIToolbox caches the value in each process, so running
+/// processes never see a plain write. `TISUpdateFnUsageType` applies it
+/// properly — it stores the preference, invalidates the cache, broadcasts the
+/// change to all processes, and rewires the dictation shortcut when moving
+/// to or from Start Dictation.
 ///
-/// The user's original value is persisted before it is overridden, so it
+/// Both TIS calls are private HIToolbox exports, so they are looked up at
+/// runtime: if a future macOS drops them, this does nothing rather than
+/// stopping Popy from launching, and the user can still pick Do Nothing by hand.
+///
+/// The user's original choice is persisted before it is overridden, so it
 /// survives a crash and is restored on the next clean stop.
 enum FnSystemActionOverride {
 
-    private static let domain = "com.apple.HIToolbox" as CFString
-    private static let key = "AppleFnUsageType" as CFString
-    private static let doNothing = 0
+    private typealias GetFnUsageType = @convention(c) () -> Int32
+    private typealias UpdateFnUsageType = @convention(c) (Int32) -> Void
+
+    private static let hiToolbox = dlopen(
+        "/System/Library/Frameworks/Carbon.framework/Frameworks/HIToolbox.framework/HIToolbox",
+        RTLD_LAZY
+    )
+    private static let getFnUsageType: GetFnUsageType? = symbol("TISGetFnUsageType")
+    private static let updateFnUsageType: UpdateFnUsageType? = symbol("TISUpdateFnUsageType")
+
+    private static let doNothing: Int32 = 0
+    private static let validValues: ClosedRange<Int32> = 0...3
 
     /// Popy's own record of the user's value. Absent: nothing overridden.
-    /// -1: the key was unset (system default) before we touched it.
     private static let savedKey = "savedAppleFnUsageType"
-    private static let unsetMarker = -1
 
     static func apply() {
-        let current = readValue()
-        guard current != doNothing else { return }
+        guard let getFnUsageType = getFnUsageType,
+              let updateFnUsageType = updateFnUsageType else { return }
+
+        // The effective value, which resolves an unset preference to the
+        // system default — so restoring it restores what the key actually did.
+        let current = getFnUsageType()
 
         // Only record the original once — after a crash the current value is
         // already ours, and overwriting would lose the user's real setting.
-        if UserDefaults.standard.object(forKey: savedKey) == nil {
-            UserDefaults.standard.set(current ?? unsetMarker, forKey: savedKey)
+        if current != doNothing, UserDefaults.standard.object(forKey: savedKey) == nil {
+            UserDefaults.standard.set(Int(current), forKey: savedKey)
         }
-        writeValue(doNothing)
+
+        // Push even when the value already reads Do Nothing: other processes
+        // may still hold a stale cached value from a plain preference write.
+        updateFnUsageType(doNothing)
     }
 
     static func restore() {
         guard let saved = UserDefaults.standard.object(forKey: savedKey) as? Int else { return }
         UserDefaults.standard.removeObject(forKey: savedKey)
 
+        // Out-of-range values are 1.4.0's "unset" marker, which has no live
+        // equivalent to restore.
+        guard let updateFnUsageType = updateFnUsageType,
+              let value = Int32(exactly: saved), validValues.contains(value) else { return }
+
         // If the user changed the setting themselves while Popy ran, theirs wins.
-        guard readValue() == doNothing else { return }
-        writeValue(saved == unsetMarker ? nil : saved)
+        guard storedValue() == doNothing else { return }
+        updateFnUsageType(value)
     }
 
-    private static func readValue() -> Int? {
-        CFPreferencesCopyValue(key, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? Int
+    /// The value on disk. Read through CFPreferences rather than
+    /// `TISGetFnUsageType`, whose in-process cache can miss a change the user
+    /// made in System Settings.
+    private static func storedValue() -> Int32? {
+        let domain = "com.apple.HIToolbox" as CFString
+        CFPreferencesAppSynchronize(domain)
+        return (CFPreferencesCopyAppValue("AppleFnUsageType" as CFString, domain) as? NSNumber)?.int32Value
     }
 
-    private static func writeValue(_ value: Int?) {
-        CFPreferencesSetValue(key, value.map { $0 as CFNumber }, domain,
-                              kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-        CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-        activate()
-    }
-
-    /// Writing the preference alone only takes effect at next login.
-    /// `activateSettings -u` is what System Settings uses to apply keyboard
-    /// preferences to the running session.
-    private static func activate() {
-        let tool = "/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings"
-        guard FileManager.default.isExecutableFile(atPath: tool) else { return }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: tool)
-        process.arguments = ["-u"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-        } catch {
-            print("Popy [Fn] could not apply keyboard settings: \(error.localizedDescription)")
-        }
+    private static func symbol<T>(_ name: String) -> T? {
+        guard let handle = hiToolbox, let pointer = dlsym(handle, name) else { return nil }
+        return unsafeBitCast(pointer, to: T.self)
     }
 }
