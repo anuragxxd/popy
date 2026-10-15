@@ -30,15 +30,26 @@ final class FnKeyListener {
     private static let fnKeyCode: UInt16 = UInt16(kVK_Function)
 
     /// Maximum gap between the two Fn presses to count as a double-tap.
-    /// 300ms is tight for Fn (which has noticeable debounce on some
-    /// keyboards); 400ms is comfortable without catching unrelated presses.
-    private let doubleTapWindow: TimeInterval = 0.4
+    /// 400ms missed relaxed double-taps often enough that Fn Fn felt like it
+    /// "sometimes does nothing"; Fn has no other meaning on its own once the
+    /// system action is suppressed, so a wider window costs nothing.
+    private let doubleTapWindow: TimeInterval = 0.5
+
+    /// How long Fn must stay down before it counts as hold-to-talk rather
+    /// than a tap, or the first half of a double-tap.
+    private let holdThreshold: TimeInterval = 0.35
 
     private var globalMonitor: Any?
     private var localMonitor: Any?
+    /// Key presses, watched only while Fn is down, so Fn used as a modifier
+    /// (Fn+arrow, Fn+F1…) is never mistaken for hold-to-talk. Global key-down
+    /// monitoring needs Accessibility; without it this is simply never fired.
+    private var keyDownMonitor: Any?
 
     private var lastPressTime: TimeInterval = 0
     private var fnIsDown = false
+    private var holdTimer: Timer?
+    private(set) var isHolding = false
 
     /// Set to true once we have actually observed an Fn event, which proves
     /// Accessibility permission is live.
@@ -46,6 +57,17 @@ final class FnKeyListener {
 
     /// Fired on the main queue when Fn is tapped twice in quick succession.
     var onDoubleTap: (() -> Void)?
+
+    /// Fired on the main queue when Fn has been held past `holdThreshold`
+    /// with no other key involved. Only fires while `holdToTalkEnabled`.
+    var onHoldStart: (() -> Void)?
+
+    /// Fired on the main queue when a hold ends. `cancelled` is true when
+    /// another key was pressed during the hold — Fn was a modifier, not a
+    /// request to dictate.
+    var onHoldEnd: ((_ cancelled: Bool) -> Void)?
+
+    var holdToTalkEnabled = false
 
     private init() {}
 
@@ -81,6 +103,7 @@ final class FnKeyListener {
             NSEvent.removeMonitor(monitor)
             localMonitor = nil
         }
+        endHold(cancelled: true)
         fnIsDown = false
         lastPressTime = 0
         FnSystemActionOverride.restore()
@@ -98,15 +121,28 @@ final class FnKeyListener {
         // Gate on the keycode, NOT on the `.function` modifier flag alone.
         // Arrow keys, F-keys, Home/End/PageUp/PageDown all set `.function`
         // too — only the physical Fn key reports keyCode 63.
-        guard event.keyCode == Self.fnKeyCode else { return }
+        guard event.keyCode == Self.fnKeyCode else {
+            // Another modifier joined Fn (Fn+Ctrl…): Fn is a modifier here.
+            if fnIsDown { interruptHold() }
+            return
+        }
 
         let isDown = event.modifierFlags.contains(.function)
 
-        // `.flagsChanged` fires on both press and release. Only count presses,
-        // and ignore any repeat while the key is physically held.
-        guard isDown, !fnIsDown else {
-            fnIsDown = isDown
+        guard isDown else {
+            fnIsDown = false
+            endHold(cancelled: false)
             return
+        }
+
+        // Modifiers do not auto-repeat, so a second "down" without a "up" in
+        // between means the release was never delivered (it can be lost while
+        // another app holds Secure Input, for one). Count it as a fresh press:
+        // previously this was treated as a repeat and the press was dropped,
+        // which made Fn Fn silently need a third tap.
+        if fnIsDown {
+            Log.dictation.notice("Fn down without a release; treating as a new press")
+            endHold(cancelled: true)
         }
         fnIsDown = true
 
@@ -117,12 +153,62 @@ final class FnKeyListener {
             // Reset so a third tap starts a fresh pair rather than
             // immediately re-triggering.
             lastPressTime = 0
+            Log.dictation.notice("Fn double-tap (\(Int(elapsed * 1000))ms apart)")
             DispatchQueue.main.async { [weak self] in
                 self?.onDoubleTap?()
             }
         } else {
             lastPressTime = now
+            beginHoldTimer()
         }
+    }
+
+    // MARK: - Hold to talk
+
+    private func beginHoldTimer() {
+        guard holdToTalkEnabled else { return }
+        holdTimer?.invalidate()
+        holdTimer = Timer.scheduledTimer(withTimeInterval: holdThreshold, repeats: false) { [weak self] _ in
+            guard let self = self, self.fnIsDown else { return }
+            self.holdTimer = nil
+            self.isHolding = true
+            // A hold is not the first half of a double-tap.
+            self.lastPressTime = 0
+            Log.dictation.notice("Fn hold started")
+            self.onHoldStart?()
+        }
+        // .common so a hold still registers while Popy's menu is open.
+        if let timer = holdTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
+
+        // Only possible with Accessibility; see `keyDownMonitor`.
+        if keyDownMonitor == nil {
+            keyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] _ in
+                self?.interruptHold()
+            }
+        }
+    }
+
+    /// Fn turned out to be a modifier for another key: never start a hold,
+    /// and abandon one already under way.
+    private func interruptHold() {
+        lastPressTime = 0
+        endHold(cancelled: true)
+    }
+
+    private func endHold(cancelled: Bool) {
+        holdTimer?.invalidate()
+        holdTimer = nil
+        if let monitor = keyDownMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyDownMonitor = nil
+        }
+
+        guard isHolding else { return }
+        isHolding = false
+        Log.dictation.notice("Fn hold ended\(cancelled ? " (cancelled)" : "")")
+        onHoldEnd?(cancelled)
     }
 }
 

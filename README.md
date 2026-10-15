@@ -47,7 +47,9 @@ Or **[download the DMG manually](https://github.com/anuragxxd/popy/releases/late
 
 ## What it does
 
-- **Dictate anywhere** — press **Fn twice**, speak, press **Fn twice** again
+- **Dictate anywhere** — press **Fn twice**, speak, press **Fn twice** again (or hold Fn and release)
+- **Esc** throws a recording away
+- **Your vocabulary** — names and jargon spelled your way
 - Transcribes **on-device** in under a second; nothing is uploaded
 - Remembers your last 25 text copies
 - Click any entry to copy it back (or paste it directly into the active app)
@@ -61,8 +63,26 @@ Press the **Fn (globe) key twice** to start listening. The menu bar icon turns
 into a red microphone. Press **Fn twice again** to stop — a second later the
 transcript is on your clipboard, ready to paste.
 
+Prefer push-to-talk? Turn on **Hold Fn to Talk**: hold Fn, speak, let go.
+Press **Esc** while recording to throw it away; Esc goes back to your app the
+moment recording stops.
+
 The transcript is stored **exactly as spoken**. Nothing rewrites, summarises,
-or "cleans up" your words.
+or "cleans up" your words, apart from the vocabulary you give it.
+
+### Vocabulary
+
+**Vocabulary…** in the menu takes one entry per line:
+
+```
+Kubernetes          # spelled exactly like this
+pop e -> Popy       # heard as "pop e", written "Popy"
+```
+
+A word on its own fixes its spelling and casing wherever it appears, and on
+Whisper it also primes the recogniser. `heard -> written` replaces whole words,
+ignoring case. Apple's speech model takes no vocabulary hints, so on Macs using
+it, replacements are how you fix a word it keeps mishearing.
 
 If a recording contains no speech, it is discarded without transcribing —
 speech recognisers otherwise hallucinate filler text ("you", "Thank you.")
@@ -108,6 +128,8 @@ All toggleable from the menu:
 - **Sound on Copy** — subtle audio feedback
 - **Launch at Login** — start Popy automatically
 - **Dictate with Fn Fn** — enable or disable voice input
+- **Hold Fn to Talk** — record while Fn is held (off by default, since Fn is
+  also a modifier; with Accessibility granted, Fn+another key never triggers it)
 - **Copy Transcript to Clipboard** — leave the transcript on the clipboard (on
   by default). Turn it off and a pasted transcript won't replace what you had
   copied: it is pasted, then your previous clipboard comes back. With pasting
@@ -115,6 +137,7 @@ All toggleable from the menu:
 - **Paste Transcript Directly** — paste the transcript into the app you're using
 - **Mute Audio While Dictating** — silence system output while recording so it
   doesn't bleed into the microphone (on by default)
+- **Vocabulary…** — your names, jargon, and replacements
 
 > Either "Paste Directly" mode simulates Cmd+V into whatever app you're using,
 > so macOS asks for Accessibility permission the first time.
