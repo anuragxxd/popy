@@ -279,6 +279,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         voiceToggle.state = preferences.voiceInputEnabled ? .on : .off
         menu.addItem(voiceToggle)
 
+        let holdItem = NSMenuItem(title: "Hold Fn to Talk", action: #selector(toggleHoldToTalk(_:)), keyEquivalent: "")
+        holdItem.target = self
+        holdItem.state = preferences.holdToTalkEnabled ? .on : .off
+        holdItem.isEnabled = preferences.voiceInputEnabled
+        menu.addItem(holdItem)
+
         let voiceCopyItem = NSMenuItem(title: "Copy Transcript to Clipboard", action: #selector(toggleVoiceCopy(_:)), keyEquivalent: "")
         voiceCopyItem.target = self
         voiceCopyItem.state = preferences.voiceCopyToClipboard ? .on : .off
@@ -296,6 +302,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         muteItem.state = preferences.muteWhileDictating ? .on : .off
         muteItem.isEnabled = preferences.voiceInputEnabled
         menu.addItem(muteItem)
+
+        let vocabularyItem = NSMenuItem(title: "Vocabulary…", action: #selector(openVocabulary(_:)), keyEquivalent: "")
+        vocabularyItem.target = self
+        vocabularyItem.isEnabled = preferences.voiceInputEnabled
+        menu.addItem(vocabularyItem)
 
         // Surface setup state. Every one of these failure modes is otherwise
         // silent, which is exactly what makes voice input feel "broken".
@@ -486,6 +497,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             KeyboardSimulator.requestAccessibilityPermission()
         }
         buildMenu()
+    }
+
+    @objc private func toggleHoldToTalk(_ sender: NSMenuItem) {
+        voiceController.setHoldToTalk(!preferences.holdToTalkEnabled)
+        buildMenu()
+    }
+
+    @objc private func openVocabulary(_ sender: NSMenuItem) {
+        VocabularyWindowController.shared.present()
     }
 
     @objc private func toggleMuteWhileDictating(_ sender: NSMenuItem) {

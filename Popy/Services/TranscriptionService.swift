@@ -227,6 +227,13 @@ final class TranscriptionService {
             "-t", "\(threadCount)"
         ]
 
+        // Prime the decoder with the user's vocabulary. Whisper treats the
+        // prompt as preceding text, so spellings in it are strongly favoured.
+        let hints = Vocabulary.current.hints
+        if !hints.isEmpty {
+            process.arguments? += ["--prompt", "Glossary: " + hints.joined(separator: ", ") + "."]
+        }
+
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe

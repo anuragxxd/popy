@@ -13,11 +13,14 @@ import AppKit
 final class DictationHUD {
 
     enum Mode {
-        case listening
+        /// `byHold`: recording lasts while Fn is held, rather than until Fn Fn.
+        case listening(byHold: Bool)
         case transcribing
         /// The transcript, and where it went ("Copied", "Pasted"…).
         case delivered(String, status: String)
         case failed(String)
+        /// The user threw the recording away with Esc.
+        case cancelled
     }
 
     static let shared = DictationHUD()
@@ -106,9 +109,9 @@ final class DictationHUD {
 
         let showMeter: Bool
         switch mode {
-        case .listening:
+        case .listening(let byHold):
             iconView?.image = symbol("mic.fill", tint: .systemRed)
-            setText("Listening", detail: "Fn Fn to stop")
+            setText("Listening", detail: byHold ? "Release Fn to stop · Esc to cancel" : "Fn Fn to stop · Esc to cancel")
             showMeter = true
             meter?.isRunning = true
 
@@ -131,6 +134,13 @@ final class DictationHUD {
             showMeter = false
             meter?.isRunning = false
             scheduleHide(after: 4.0)
+
+        case .cancelled:
+            iconView?.image = symbol("xmark.circle.fill", tint: .secondaryLabelColor)
+            setText("Cancelled", detail: nil)
+            showMeter = false
+            meter?.isRunning = false
+            scheduleHide(after: 1.2)
         }
 
         meter?.isHidden = !showMeter

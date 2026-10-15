@@ -81,4 +81,20 @@ final class PreferencesManager {
         }
         set { defaults.set(newValue, forKey: "muteWhileDictating") }
     }
+
+    /// Whether holding Fn records until it is released, alongside Fn Fn.
+    /// Off by default: Fn is also a modifier (Fn+F1, Fn+arrow), and without
+    /// Accessibility Popy cannot see the other key to rule those out.
+    /// Default: false
+    var holdToTalkEnabled: Bool {
+        get { defaults.bool(forKey: "holdToTalkEnabled") }
+        set { defaults.set(newValue, forKey: "holdToTalkEnabled") }
+    }
+
+    /// The user's vocabulary, as typed. See `Vocabulary` for the format.
+    /// Default: empty
+    var vocabularyText: String {
+        get { defaults.string(forKey: "vocabularyText") ?? "" }
+        set { defaults.set(newValue, forKey: "vocabularyText") }
+    }
 }

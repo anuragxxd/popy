@@ -1,13 +1,17 @@
 import AppKit
+import os
 
 /// Owns the dictation state machine and wires together the Fn listener,
 /// the recorder, and the on-device transcription engine: Apple's
 /// SpeechAnalyzer where the Mac supports it, Whisper everywhere else.
 ///
 ///     idle ──Fn Fn──▶ recording ──Fn Fn──▶ transcribing ──▶ idle
+///     idle ──hold Fn──▶ recording ──release──▶ transcribing ──▶ idle
+///                       recording ──Esc──▶ idle
 ///
 /// The finished transcript is copied, pasted, or both, exactly as the engine
-/// produced it. Nothing rewrites, summarises, or "cleans up" the text.
+/// produced it, apart from the user's own `Vocabulary`. Nothing rewrites,
+/// summarises, or "cleans up" the text.
 final class VoiceInputController {
 
     enum State: Equatable {
@@ -27,6 +31,9 @@ final class VoiceInputController {
             guard oldValue != state else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
+                // Esc belongs to the user's app except while recording. Tied
+                // to the state itself, so no exit path can leave it held.
+                HotkeyManager.shared.setEscapeEnabled(self.state == .recording)
                 self.onStateChange?(self.state)
             }
         }
@@ -52,6 +59,18 @@ final class VoiceInputController {
     /// starting. Guards the async gap on first run.
     private var isPreparing = false
 
+    /// The current recording was started by holding Fn, so releasing Fn ends it.
+    private var recordingStartedByHold = false
+
+    /// Identifies the transcription in flight, so a result that arrives after
+    /// the timeout gave up on it is ignored rather than delivered late.
+    private var transcriptionID = 0
+
+    /// Longest a transcription may run before Popy gives up on it. Typical is
+    /// well under a second; without a limit, an engine that never returned
+    /// left the state stuck in `.transcribing`, where every Fn Fn is ignored.
+    private static let transcriptionTimeout: TimeInterval = 30
+
     private init() {}
 
     // MARK: - Lifecycle
@@ -59,6 +78,17 @@ final class VoiceInputController {
     func start() {
         FnKeyListener.shared.onDoubleTap = { [weak self] in
             self?.handleDoubleTap()
+        }
+        FnKeyListener.shared.onHoldStart = { [weak self] in
+            self?.handleHoldStart()
+        }
+        FnKeyListener.shared.onHoldEnd = { [weak self] cancelled in
+            self?.handleHoldEnd(cancelled: cancelled)
+        }
+        FnKeyListener.shared.holdToTalkEnabled = preferences.holdToTalkEnabled
+
+        HotkeyManager.shared.onEscape = { [weak self] in
+            self?.cancelRecording()
         }
 
         recorder.onAutoStop = { [weak self] url in
@@ -86,6 +116,11 @@ final class VoiceInputController {
         state = .idle
     }
 
+    func setHoldToTalk(_ enabled: Bool) {
+        preferences.holdToTalkEnabled = enabled
+        FnKeyListener.shared.holdToTalkEnabled = enabled
+    }
+
     func setEnabled(_ enabled: Bool) {
         preferences.voiceInputEnabled = enabled
         if enabled {
@@ -111,6 +146,7 @@ final class VoiceInputController {
     }
 
     private func handleDoubleTap() {
+        Log.dictation.notice("Trigger in state \(String(describing: self.state), privacy: .public)")
         switch state {
         case .idle:
             beginRecording()
@@ -119,7 +155,44 @@ final class VoiceInputController {
         case .transcribing:
             // Ignore triggers while inference is running — it is sub-second,
             // and queuing a second recording here would race the pasteboard.
-            break
+            // Say so, though: ignoring it silently looks like Fn Fn is broken.
+            DictationHUD.shared.show(.transcribing)
+        }
+    }
+
+    private func handleHoldStart() {
+        guard state == .idle else { return }
+        recordingStartedByHold = true
+        beginRecording()
+    }
+
+    private func handleHoldEnd(cancelled: Bool) {
+        guard recordingStartedByHold else { return }
+        recordingStartedByHold = false
+        guard state == .recording else { return }
+
+        if cancelled {
+            // Fn was a modifier for another key after all. Not the user's
+            // mistake, so leave quietly rather than flash a "Cancelled".
+            cancelRecording(quietly: true)
+        } else {
+            endRecording(fromHold: true)
+        }
+    }
+
+    /// Throw the recording away: Esc, or a hold that turned out not to be one.
+    func cancelRecording(quietly: Bool = false) {
+        guard state == .recording else { return }
+        Log.dictation.notice("Recording cancelled")
+        recordingStartedByHold = false
+        recorder.cancel()
+        discardLiveTranscription()
+        SystemAudioMuter.shared.restore()
+        state = .idle
+        if quietly {
+            DictationHUD.shared.hide()
+        } else {
+            DictationHUD.shared.show(.cancelled)
         }
     }
 
@@ -156,6 +229,12 @@ final class VoiceInputController {
                 return
             }
 
+            // A hold released while the microphone prompt was up.
+            if self.recordingStartedByHold, !FnKeyListener.shared.isHolding {
+                self.recordingStartedByHold = false
+                return
+            }
+
             // Apple transcribes while the user speaks, so connect it before
             // the first buffer arrives.
             if let live = AppleSpeechEngine.makeLiveTranscription() {
@@ -166,7 +245,7 @@ final class VoiceInputController {
             do {
                 try self.recorder.start()
                 self.state = .recording
-                DictationHUD.shared.show(.listening)
+                DictationHUD.shared.show(.listening(byHold: self.recordingStartedByHold))
 
                 // Silence output only once recording is actually under way, so
                 // a failed start never leaves the machine muted.
@@ -174,6 +253,8 @@ final class VoiceInputController {
                     SystemAudioMuter.shared.mute()
                 }
             } catch {
+                Log.dictation.error("Recorder failed to start: \(error.localizedDescription, privacy: .public)")
+                self.recordingStartedByHold = false
                 self.discardLiveTranscription()
                 self.state = .idle
                 DictationHUD.shared.show(.failed(error.localizedDescription))
@@ -182,7 +263,8 @@ final class VoiceInputController {
         }
     }
 
-    private func endRecording() {
+    private func endRecording(fromHold: Bool = false) {
+        recordingStartedByHold = false
         // Unmute the moment capture stops — the user should not sit through
         // transcription in silence.
         SystemAudioMuter.shared.restore()
@@ -191,11 +273,16 @@ final class VoiceInputController {
             let url = try recorder.stop()
             handleFinishedRecording(at: url)
         } catch AudioRecorder.RecorderError.tooShort {
-            // Almost certainly a stray double-tap. Say so briefly rather than
-            // vanishing without explanation.
             discardLiveTranscription()
             state = .idle
-            DictationHUD.shared.show(.failed("Too short — hold on and speak first."))
+            if fromHold {
+                // A brief hold is an accidental one; there is nothing to explain.
+                DictationHUD.shared.hide()
+            } else {
+                // Almost certainly a stray double-tap. Say so briefly rather
+                // than vanishing without explanation.
+                DictationHUD.shared.show(.failed("Too short — hold on and speak first."))
+            }
         } catch {
             discardLiveTranscription()
             state = .idle
@@ -206,6 +293,7 @@ final class VoiceInputController {
 
     /// Shared by a manual stop and the max-duration auto-stop.
     private func handleFinishedRecording(at url: URL) {
+        recordingStartedByHold = false
         let live = liveTranscription
         liveTranscription = nil
         recorder.onAudio = nil
@@ -243,8 +331,10 @@ final class VoiceInputController {
     /// Whisper (when set up) can still transcribe it rather than the dictation
     /// being lost.
     private func finishLiveTranscription(_ live: LiveTranscription, recording url: URL) {
-        state = .transcribing
-        DictationHUD.shared.show(.transcribing)
+        let id = beginTranscribingState {
+            live.cancel()
+            try? FileManager.default.removeItem(at: url)
+        }
 
         Task { @MainActor [weak self] in
             let result: Result<String, Error>
@@ -253,8 +343,28 @@ final class VoiceInputController {
             } catch {
                 result = .failure(error)
             }
-            self?.completeLiveTranscription(result, recording: url)
+            guard let self = self, self.transcriptionID == id else { return }
+            self.completeLiveTranscription(result, recording: url)
         }
+    }
+
+    /// Enter `.transcribing` and arm the timeout. Returns the ID that the
+    /// eventual result must still match to be delivered.
+    private func beginTranscribingState(onTimeout abandon: @escaping () -> Void) -> Int {
+        transcriptionID &+= 1
+        let id = transcriptionID
+        state = .transcribing
+        DictationHUD.shared.show(.transcribing)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.transcriptionTimeout) { [weak self] in
+            guard let self = self, self.transcriptionID == id, self.state == .transcribing else { return }
+            Log.dictation.error("Transcription timed out")
+            self.transcriptionID &+= 1
+            abandon()
+            self.state = .idle
+            DictationHUD.shared.show(.failed("Transcription took too long. Try again."))
+        }
+        return id
     }
 
     private func completeLiveTranscription(_ result: Result<String, Error>, recording url: URL) {
@@ -279,11 +389,12 @@ final class VoiceInputController {
     }
 
     private func beginTranscription(of url: URL) {
-        state = .transcribing
-        DictationHUD.shared.show(.transcribing)
+        // Whisper's process cannot be cut short; on timeout its result is
+        // simply ignored, and it deletes the recording itself when done.
+        let id = beginTranscribingState(onTimeout: {})
 
         transcriber.transcribe(fileAt: url) { [weak self] result in
-            guard let self = self else { return }
+            guard let self = self, self.transcriptionID == id else { return }
             self.state = .idle
 
             switch result {
@@ -308,7 +419,13 @@ final class VoiceInputController {
     /// Hand the transcript over exactly as the engine produced it, and show
     /// where it went. It always goes into the history too, so a paste that
     /// missed its target can still be recovered from the menu.
-    private func deliver(_ text: String) {
+    private func deliver(_ transcript: String) {
+        let text = Vocabulary.current.apply(to: transcript)
+        guard !text.isEmpty else {
+            DictationHUD.shared.show(.failed("No speech detected."))
+            return
+        }
+
         let clipboard = ClipboardManager.shared
         let paste = preferences.voicePasteDirectly
         let canPaste = paste && KeyboardSimulator.hasAccessibilityPermission
