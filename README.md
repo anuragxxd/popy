@@ -32,7 +32,7 @@
 ---
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="Popy's menu bar window showing clipboard history and the voice input settings" width="380" />
+  <img src="assets/demo.gif" alt="Pressing Fn twice in an editor: Popy listens, then pastes the transcript; the clipboard history menu opens and pastes an earlier item" width="900" />
 </p>
 
 ## Install
