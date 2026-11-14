@@ -97,6 +97,28 @@ final class VoiceInputController {
             self.handleFinishedRecording(at: url)
         }
 
+        recorder.onPreparing = { [weak self] in
+            guard self?.state == .recording else { return }
+            DictationHUD.shared.show(.preparing)
+        }
+
+        recorder.onReady = { [weak self] in
+            guard let self = self, self.state == .recording else { return }
+            if self.preferences.muteWhileDictating {
+                SystemAudioMuter.shared.mute()
+            }
+            DictationHUD.shared.show(.listening(byHold: self.recordingStartedByHold))
+        }
+
+        recorder.onFailure = { [weak self] error in
+            guard let self = self, self.state == .recording else { return }
+            SystemAudioMuter.shared.restore()
+            self.recordingStartedByHold = false
+            self.discardLiveTranscription()
+            self.state = .idle
+            DictationHUD.shared.show(.failed(error.localizedDescription))
+        }
+
         recorder.onLevel = { level in
             DictationHUD.shared.updateLevel(level)
         }
@@ -243,16 +265,16 @@ final class VoiceInputController {
             }
 
             do {
-                try self.recorder.start()
-                self.state = .recording
-                DictationHUD.shared.show(.listening(byHold: self.recordingStartedByHold))
-
-                // Silence output only once recording is actually under way, so
-                // a failed start never leaves the machine muted.
+                // Mute before opening the mic; Bluetooth reconfiguration must
+                // not race the output control or leak playback into capture.
                 if self.preferences.muteWhileDictating {
                     SystemAudioMuter.shared.mute()
                 }
+                try self.recorder.start()
+                self.state = .recording
+                DictationHUD.shared.show(.preparing)
             } catch {
+                SystemAudioMuter.shared.restore()
                 Log.dictation.error("Recorder failed to start: \(error.localizedDescription, privacy: .public)")
                 self.recordingStartedByHold = false
                 self.discardLiveTranscription()
@@ -265,14 +287,12 @@ final class VoiceInputController {
 
     private func endRecording(fromHold: Bool = false) {
         recordingStartedByHold = false
-        // Unmute the moment capture stops — the user should not sit through
-        // transcription in silence.
-        SystemAudioMuter.shared.restore()
-
         do {
             let url = try recorder.stop()
+            SystemAudioMuter.shared.restore()
             handleFinishedRecording(at: url)
         } catch AudioRecorder.RecorderError.tooShort {
+            SystemAudioMuter.shared.restore()
             discardLiveTranscription()
             state = .idle
             if fromHold {
@@ -284,6 +304,7 @@ final class VoiceInputController {
                 DictationHUD.shared.show(.failed("Too short — hold on and speak first."))
             }
         } catch {
+            SystemAudioMuter.shared.restore()
             discardLiveTranscription()
             state = .idle
             DictationHUD.shared.show(.failed(error.localizedDescription))
