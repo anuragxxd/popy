@@ -61,7 +61,15 @@ Or **[download the DMG manually](https://github.com/anuragxxd/popy/releases/late
 
 Press the **Fn (globe) key twice** to start listening. The menu bar icon turns
 into a red microphone. Press **Fn twice again** to stop — a second later the
-transcript is on your clipboard, ready to paste.
+transcript is on your clipboard, ready to paste. Wait for the HUD to say
+**Listening** before speaking; **Starting microphone…** means capture is not
+ready yet.
+
+Popy uses your selected system microphone, including Bluetooth headset mics.
+Bluetooth may need a moment to enter microphone mode. Popy waits for audio
+before showing **Listening** and handles the resulting audio-format change.
+With **Mute while dictating** enabled, playback is kept silent through the
+mode switch and the previous output level is restored when capture ends.
 
 Prefer push-to-talk? Turn on **Hold Fn to Talk**: hold Fn, speak, let go.
 Press **Esc** while recording to throw it away; Esc goes back to your app the

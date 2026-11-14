@@ -53,8 +53,14 @@ final class AudioRecorder {
     private var engine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var converter: AVAudioConverter?
-    private var startedAt: Date?
     private var autoStopTimer: Timer?
+    private var configurationObserver: NSObjectProtocol?
+    private var startupTimer: Timer?
+    private var receivedAudio = false
+    private var tapID: UUID?
+
+    /// A failed Bluetooth transition must not leave the HUD stuck listening.
+    var onFailure: ((Error) -> Void)?
 
     private(set) var isRecording = false
 
@@ -93,6 +99,10 @@ final class AudioRecorder {
     /// Each buffer as it is written: 16 kHz mono Int16. Called on the audio
     /// tap's thread. Lets Apple's transcriber work while the user speaks.
     var onAudio: ((AVAudioPCMBuffer) -> Void)?
+
+    /// Delivered on the main queue only after the first microphone buffer.
+    var onReady: (() -> Void)?
+    var onPreparing: (() -> Void)?
 
     private init() {}
 
@@ -193,28 +203,53 @@ final class AudioRecorder {
         self.converter = converter
         self.currentURL = url
 
+        // Reset before starting the engine: taps may arrive during start().
+        peakLevel = 0
+        voicedBufferCount = 0
+
         // 1024 frames rather than 4096: the tap callback rate is what drives
         // the on-screen level meter, and on a 16 kHz input a 4096-frame buffer
         // only fires ~4x/sec, which reads as a laggy meter. 1024 gives ~15x/sec
         // at negligible extra cost.
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            self?.append(buffer)
-            self?.reportLevel(buffer)
+        // Let the input node supply its native format. Bluetooth can change
+        // sample rate when it enters microphone mode; append() adapts to the
+        // format of the actual buffers instead of assuming the startup format.
+        receivedAudio = false
+        installInputTap(on: engine, recording: url)
+
+        // The headset's profile transition can stop AVAudioEngine after start
+        // returns. Restart the existing graph without dropping the WAV or the
+        // speech session. Notifications for a discarded engine are ignored.
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self, weak engine] _ in
+            guard let self = self, let engine = engine,
+                  self.engine === engine, self.isRecording, !engine.isRunning else { return }
+            do {
+                guard Self.hasUsableInputDevice() else { throw RecorderError.noInputDevice }
+                engine.inputNode.removeTap(onBus: 0)
+                self.installInputTap(on: engine, recording: url)
+                self.armStartupTimeout()
+                self.onPreparing?()
+                try engine.start()
+            } catch {
+                self.cancel()
+                self.onFailure?(RecorderError.engineFailed(error.localizedDescription))
+            }
         }
 
         engine.prepare()
         do {
             try engine.start()
         } catch {
-            inputNode.removeTap(onBus: 0)
+            teardownEngine()
+            try? FileManager.default.removeItem(at: url)
             cleanupState()
             throw RecorderError.engineFailed(error.localizedDescription)
         }
 
         isRecording = true
-        startedAt = Date()
-        peakLevel = 0
-        voicedBufferCount = 0
+        armStartupTimeout()
 
         autoStopTimer = Timer.scheduledTimer(withTimeInterval: maxDuration, repeats: false) { [weak self] _ in
             guard let self = self, self.isRecording else { return }
@@ -236,7 +271,8 @@ final class AudioRecorder {
 
         teardownEngine()
 
-        let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+        // Hardware startup time is not recorded speech.
+        let duration = audioFile.map { Double($0.length) / Self.targetSampleRate } ?? 0
 
         cleanupState()
 
@@ -264,21 +300,54 @@ final class AudioRecorder {
 
     private var currentURL: URL?
 
+    private func armStartupTimeout() {
+        startupTimer?.invalidate()
+        receivedAudio = false
+        startupTimer = Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { [weak self] _ in
+            guard let self = self, self.isRecording, !self.receivedAudio else { return }
+            self.cancel()
+            self.onFailure?(RecorderError.engineFailed("The microphone did not deliver audio. Try reconnecting your headphones."))
+        }
+    }
+
+    private func installInputTap(on engine: AVAudioEngine, recording url: URL) {
+        let id = UUID()
+        tapID = id
+        engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
+            guard let self = self, self.append(buffer) else { return }
+            self.reportLevel(buffer)
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.isRecording, self.currentURL == url,
+                      self.tapID == id, !self.receivedAudio else { return }
+                self.receivedAudio = true
+                self.startupTimer?.invalidate()
+                self.startupTimer = nil
+                self.onReady?()
+            }
+        }
+
+    }
+
+
     /// Remove the tap, stop the engine, and drop it entirely so the next
     /// recording starts from a clean AVAudioEngine bound to whatever the
     /// current input device happens to be.
     private func teardownEngine() {
-        guard let engine = engine else { return }
-        if engine.isRunning {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
+        tapID = nil
+        startupTimer?.invalidate()
+        startupTimer = nil
+        if let observer = configurationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configurationObserver = nil
         }
+        guard let engine = engine else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
         self.engine = nil
     }
 
     private func cleanupState() {
         isRecording = false
-        startedAt = nil
         audioFile = nil
         converter = nil
         currentURL = nil
@@ -294,20 +363,17 @@ final class AudioRecorder {
     private static func hasUsableInputDevice() -> Bool {
         var deviceID = AudioDeviceID(0)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var deviceAddress = AudioObjectPropertyAddress(
+        var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
+            mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                         &address, 0, nil, &size, &deviceID) == noErr,
+              deviceID != AudioDeviceID(kAudioObjectUnknown) else { return false }
+        return hasInputChannels(deviceID)
+    }
 
-        let status = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &deviceAddress, 0, nil, &size, &deviceID
-        )
-        guard status == noErr, deviceID != AudioDeviceID(kAudioObjectUnknown) else {
-            return false
-        }
-
+    private static func hasInputChannels(_ deviceID: AudioDeviceID) -> Bool {
         // A default device can exist while still exposing no input channels
         // (this is what an aggregate or disconnected device looks like), which
         // is exactly the case that makes AVAudioEngine throw.
@@ -340,17 +406,22 @@ final class AudioRecorder {
     }
 
     /// Convert one hardware buffer to 16 kHz mono Int16 and append it to the file.
-    private func append(_ buffer: AVAudioPCMBuffer) {
-        guard let converter = converter,
-              let file = audioFile,
-              let outputBuffer = converter.convertedBuffer(buffer) else { return }
-
+    @discardableResult
+    private func append(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard buffer.frameLength > 0, let file = audioFile else { return false }
+        // Only the tap thread accesses the converter while capture is running.
+        if converter?.inputFormat != buffer.format {
+            converter = AVAudioConverter(from: buffer.format, to: file.processingFormat)
+        }
+        guard let outputBuffer = converter?.convertedBuffer(buffer) else { return false }
         do {
             try file.write(from: outputBuffer)
         } catch {
             print("Popy [Audio] failed writing buffer: \(error.localizedDescription)")
+            return false
         }
         onAudio?(outputBuffer)
+        return true
     }
 
     /// Compute RMS of the raw input buffer and map it onto a perceptual 0...1

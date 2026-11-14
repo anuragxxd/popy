@@ -13,6 +13,7 @@ import AppKit
 final class DictationHUD {
 
     enum Mode {
+        case preparing
         /// `byHold`: recording lasts while Fn is held, rather than until Fn Fn.
         case listening(byHold: Bool)
         case transcribing
@@ -109,6 +110,12 @@ final class DictationHUD {
 
         let showMeter: Bool
         switch mode {
+        case .preparing:
+            iconView?.image = symbol("mic", tint: .secondaryLabelColor)
+            setText("Starting microphone…", detail: nil)
+            showMeter = false
+            meter?.isRunning = false
+
         case .listening(let byHold):
             iconView?.image = symbol("mic.fill", tint: .systemRed)
             setText("Listening", detail: byHold ? "Release Fn to stop · Esc to cancel" : "Fn Fn to stop · Esc to cancel")
